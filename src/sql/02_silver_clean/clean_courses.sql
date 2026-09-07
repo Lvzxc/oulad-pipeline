@@ -1,7 +1,7 @@
 -- Create the clean table for courses
 CREATE TABLE IF NOT EXISTS oulad.oulad_silver.courses_silver (
-    code_module VARCHAR(10),              -- course code
-    code_presentation VARCHAR(10),        -- semester/run
+    code_module STRING,                   -- course code
+    code_presentation STRING,             -- semester/run
     module_presentation_length INT,       -- duration in days
     ingestion_timestamp TIMESTAMP,
     ingestion_date DATE,
