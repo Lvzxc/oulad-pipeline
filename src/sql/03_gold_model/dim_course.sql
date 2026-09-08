@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_course (
     -- Result of the data quality checks
     quality_status STRING,
 
-    -- Original Silver timestamp
+    -- Original Silver processing timestamp
     -- Used for data lineage and identifying the latest record
-    silver_ingestion_timestamp TIMESTAMP,
+    silver_processed_timestamp TIMESTAMP,
 
     -- Timestamp and date when the record was processed into Gold
     gold_processed_timestamp TIMESTAMP,
@@ -31,8 +31,8 @@ WITH cleaned_silver AS (
         code_presentation,
         module_presentation_length,
 
-        -- Preserve the Silver timestamp for lineage
-        ingestion_timestamp AS silver_ingestion_timestamp
+        -- Preserve the Silver processing timestamp for lineage
+        silver_processed_timestamp
 
     FROM oulad.oulad_silver.courses_silver
 ),
@@ -84,7 +84,7 @@ SELECT
     code_presentation,
     module_presentation_length,
     quality_status,
-    silver_ingestion_timestamp
+    silver_processed_timestamp
 
 FROM usable_records;
 
@@ -102,7 +102,7 @@ WHEN MATCHED THEN
     UPDATE SET
         target.module_presentation_length = source.module_presentation_length,
         target.quality_status = source.quality_status,
-        target.silver_ingestion_timestamp = source.silver_ingestion_timestamp,
+        target.silver_processed_timestamp = source.silver_processed_timestamp,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
 
@@ -112,7 +112,7 @@ WHEN NOT MATCHED THEN
         code_presentation,
         module_presentation_length,
         quality_status,
-        silver_ingestion_timestamp,
+        silver_processed_timestamp,
         gold_processed_timestamp,
         gold_processed_date
     )
@@ -121,7 +121,7 @@ WHEN NOT MATCHED THEN
         source.code_presentation,
         source.module_presentation_length,
         source.quality_status,
-        source.silver_ingestion_timestamp,
+        source.silver_processed_timestamp,
         current_timestamp(),
         current_date()
     );
