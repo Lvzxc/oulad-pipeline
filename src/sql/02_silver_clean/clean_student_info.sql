@@ -40,7 +40,7 @@ USING (
             TRIM(gender) AS gender,
             TRIM(region) AS region,
             TRIM(highest_education) AS highest_education,
-            TRIM(imd_band) AS imd_band,
+            NULLIF(TRIM(imd_band), '?') AS imd_band, -- Convert ? to NULL
             TRIM(age_band) AS age_band,
 
             -- Convert numeric fields to INT
