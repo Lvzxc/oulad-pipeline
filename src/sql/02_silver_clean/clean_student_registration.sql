@@ -25,8 +25,9 @@ USING (
     FROM (
         -- Casts, cleans strings, handles '?', and adds ROW_NUMBER() to rank duplicate rows by recency
         SELECT
-            UPPER(TRIM(code_module)) AS code_module,
-            UPPER(TRIM(code_presentation)) AS code_presentation,
+            -- Cast standardized text to STRING
+            CAST(UPPER(TRIM(code_module)) AS STRING) AS code_module,
+            CAST(UPPER(TRIM(code_presentation)) AS STRING) AS code_presentation,
             
             -- Safely cast to integer 
             TRY_CAST(id_student AS INT) AS id_student,
@@ -40,7 +41,7 @@ USING (
             
             -- Group by the exact student-module-presentation combination and rank the newest record first
             ROW_NUMBER() OVER (
-                PARTITION BY UPPER(TRIM(code_module)), UPPER(TRIM(code_presentation)), TRY_CAST(id_student AS INT)
+                PARTITION BY CAST(UPPER(TRIM(code_module)) AS STRING), CAST(UPPER(TRIM(code_presentation)) AS STRING), TRY_CAST(id_student AS INT)
                 ORDER BY ingestion_timestamp DESC
             ) AS rn
         FROM oulad.oulad_bronze.student_registration_bronze
