@@ -10,9 +10,10 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_course (
     -- Course attribute
     module_presentation_length BIGINT,
 
-    -- Original Silver processing timestamp
+    -- Original Silver processing timestamp and date
     -- Used for data lineage and identifying the latest record
     silver_processed_timestamp TIMESTAMP,
+    silver_processed_date DATE,
 
     -- Timestamp and date when the record was processed into Gold
     gold_processed_timestamp TIMESTAMP,
@@ -29,7 +30,8 @@ SELECT
     code_module,
     code_presentation,
     module_presentation_length,
-    silver_processed_timestamp
+    silver_processed_timestamp,
+    silver_processed_date
 
 FROM oulad.oulad_silver.courses_silver;
 
@@ -47,6 +49,7 @@ WHEN MATCHED THEN
     UPDATE SET
         target.module_presentation_length = source.module_presentation_length,
         target.silver_processed_timestamp = source.silver_processed_timestamp,
+        target.silver_processed_date = source.silver_processed_date,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
 
@@ -58,6 +61,7 @@ WHEN NOT MATCHED THEN
         code_presentation,
         module_presentation_length,
         silver_processed_timestamp,
+        silver_processed_date,
         gold_processed_timestamp,
         gold_processed_date
     )
@@ -66,6 +70,7 @@ WHEN NOT MATCHED THEN
         source.code_presentation,
         source.module_presentation_length,
         source.silver_processed_timestamp,
+        source.silver_processed_date,
         current_timestamp(),
         current_date()
     );
