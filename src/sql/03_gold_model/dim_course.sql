@@ -1,14 +1,14 @@
 -- Create the Gold dimension table for courses
 CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_course (
-    -- Course identifiers (composite key)
+    -- Surrogate primary key
+    course_key BIGINT GENERATED ALWAYS AS IDENTITY,
+
+    -- Course identifiers (kept as columns, not the primary key)
     code_module STRING,
     code_presentation STRING,
 
     -- Course attribute
     module_presentation_length BIGINT,
-
-    -- Result of the data quality checks
-    quality_status STRING,
 
     -- Original Silver processing timestamp
     -- Used for data lineage and identifying the latest record
@@ -18,75 +18,20 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_course (
     gold_processed_timestamp TIMESTAMP,
     gold_processed_date DATE,
 
-    PRIMARY KEY (code_module, code_presentation)
+    PRIMARY KEY (course_key)
 );
 
 
--- Clean, validate, and prepare Silver records for Gold
+-- Prepare cleaned Silver records for Gold
 CREATE OR REPLACE TEMP VIEW dim_course_ready AS
-
-WITH cleaned_silver AS (
-    SELECT
-        code_module,
-        code_presentation,
-        module_presentation_length,
-
-        -- Preserve the Silver processing timestamp for lineage
-        silver_processed_timestamp
-
-    FROM oulad.oulad_silver.courses_silver
-),
-
-quality_checked AS (
-    SELECT
-        *,
-
-        -- Assign a quality status based on the defined DQ rules
-        CASE
-
-            -- FAIL:
-            -- The course key must be complete for the record
-            -- Course key = code_module + code_presentation
-            -- Records failing this check are excluded from Gold
-            WHEN code_module IS NULL
-              OR code_module = ''
-              OR code_presentation IS NULL
-              OR code_presentation = ''
-            THEN 'FAIL'
-
-            -- WARN:
-            -- A missing or non-positive duration is unexpected but the record
-            -- can still be retained; it is kept in Gold and flagged for review
-            WHEN module_presentation_length IS NULL
-              OR module_presentation_length <= 0
-            THEN 'WARN'
-
-            -- PASS:
-            -- No defined data quality issue was found
-            ELSE 'PASS'
-
-        END AS quality_status
-
-    FROM cleaned_silver
-),
-
-usable_records AS (
-    SELECT *
-    FROM quality_checked
-
-    -- PASS and WARN records are still usable for Gold
-    -- FAIL records are excluded because they do not meet the minimum requirements
-    WHERE quality_status IN ('PASS', 'WARN')
-)
 
 SELECT
     code_module,
     code_presentation,
     module_presentation_length,
-    quality_status,
     silver_processed_timestamp
 
-FROM usable_records;
+FROM oulad.oulad_silver.courses_silver;
 
 
 -- Merge the prepared records into the Gold dimension table
@@ -94,24 +39,24 @@ MERGE INTO oulad.oulad_gold.dim_course AS target
 
 USING dim_course_ready AS source
 
--- Match on the composite business key
+-- Match on the natural business key
 ON target.code_module = source.code_module
 AND target.code_presentation = source.code_presentation
 
 WHEN MATCHED THEN
     UPDATE SET
         target.module_presentation_length = source.module_presentation_length,
-        target.quality_status = source.quality_status,
         target.silver_processed_timestamp = source.silver_processed_timestamp,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
 
+-- course_key is intentionally left out of the INSERT list —
+-- IDENTITY auto-generates it for every new row
 WHEN NOT MATCHED THEN
     INSERT (
         code_module,
         code_presentation,
         module_presentation_length,
-        quality_status,
         silver_processed_timestamp,
         gold_processed_timestamp,
         gold_processed_date
@@ -120,7 +65,6 @@ WHEN NOT MATCHED THEN
         source.code_module,
         source.code_presentation,
         source.module_presentation_length,
-        source.quality_status,
         source.silver_processed_timestamp,
         current_timestamp(),
         current_date()
