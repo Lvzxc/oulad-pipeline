@@ -19,7 +19,7 @@
 CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_student (
     student_key BIGINT GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1), -- PK, system-generated
     id_student BIGINT,   -- Student identifier from the source data
-    course_key STRING,   -- Identifier for the module and presentation
+    course_key BIGINT,   -- FK to dim_course.course_key
     gender STRING,       -- Student demographic attributes
     region STRING,
     age_band STRING,
@@ -31,9 +31,15 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_student (
     final_result STRING, -- Final outcome for the student's course enrollment.
     date_registration BIGINT,
     date_unregistration BIGINT,
-    silver_processed_timestamp TIMESTAMP,  -- Timestamp when the latest source record was processed into Silver.
-    gold_processed_timestamp TIMESTAMP, -- Timestamp when the record was processed into Gold
-    gold_processed_date DATE,     -- Date when the record was processed into Gold
+
+    -- Silver lineage metadata
+    silver_processed_timestamp TIMESTAMP,
+    silver_processed_date DATE,
+
+    -- Gold processing metadata
+    gold_processed_timestamp TIMESTAMP,
+    gold_processed_date DATE,
+
     PRIMARY KEY (student_key)
 );
 
@@ -56,6 +62,7 @@ WITH ranked_students AS ( -- STEP 2A: DEDUPLICATE STUDENT INFORMATION
         si.disability,
         si.final_result,
         si.silver_processed_timestamp,
+        si.silver_processed_date,
 
         ROW_NUMBER() OVER (
             PARTITION BY
@@ -123,13 +130,9 @@ SELECT
     -- Preserve the original student identifier
     rs.id_student,
  
-    -- Create a readable course key from the module and presentation
-    concat(
-        rs.code_module,
-        '_',
-        rs.code_presentation
-    ) AS course_key,
- 
+    -- Pull the established course key from dim_course
+    dc.course_key,
+
     -- Student demographic attributes
     rs.gender,
     rs.region,
@@ -154,9 +157,15 @@ SELECT
     rr.date_unregistration,
  
     -- Preserve the Silver processing timestamp for lineage
-    rs.silver_processed_timestamp
+    rs.silver_processed_timestamp,
+    rs.silver_processed_date
  
 FROM ranked_students AS rs
+
+-- Pull the existing course_key from the Gold course dimension.
+INNER JOIN oulad.oulad_gold.dim_course AS dc
+    ON rs.code_module = dc.code_module
+    AND rs.code_presentation = dc.code_presentation
 
 -- Keep the student record even when no registration record exists
 LEFT JOIN ranked_registration AS rr
@@ -197,6 +206,7 @@ WHEN MATCHED THEN
 
         -- Preserve the latest Silver lineage timestamp
         target.silver_processed_timestamp = source.silver_processed_timestamp,
+        target.silver_processed_date = source.silver_processed_date,
 
         -- Refresh Gold processing metadata
         target.gold_processed_timestamp = current_timestamp(),
@@ -220,6 +230,7 @@ WHEN NOT MATCHED THEN
         date_registration,
         date_unregistration,
         silver_processed_timestamp,
+        silver_processed_date,
         gold_processed_timestamp,
         gold_processed_date
     )
@@ -239,6 +250,7 @@ WHEN NOT MATCHED THEN
         source.date_registration,
         source.date_unregistration,
         source.silver_processed_timestamp,
+        source.silver_processed_date,
         current_timestamp(),
         current_date()
     );
