@@ -9,12 +9,15 @@
 --   2. student_registration_silver
 --      -> registration and unregistration dates
 
--- Key:
---   student_key = hash(id_student + code_module + code_presentation)
+-- Keys:
+--   student_key = Gold surrogate key generated using IDENTITY
+--
+-- Natural/business key:
+--   id_student + course_key
 
 -- STEP 1: CREATE THE GOLD DIMENSION TABLE
 CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_student (
-    student_key BIGINT,  -- PK
+    student_key BIGINT GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1), -- PK, system-generated
     id_student BIGINT,   -- Student identifier from the source data
     course_key STRING,   -- Identifier for the module and presentation
     gender STRING,       -- Student demographic attributes
@@ -28,7 +31,6 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_student (
     final_result STRING, -- Final outcome for the student's course enrollment.
     date_registration BIGINT,
     date_unregistration BIGINT,
-    quality_status STRING,    -- Result of the data quality checks (FAIL OR PASS)
     silver_processed_timestamp TIMESTAMP,  -- Timestamp when the latest source record was processed into Silver.
     gold_processed_timestamp TIMESTAMP, -- Timestamp when the record was processed into Gold
     gold_processed_date DATE,     -- Date when the record was processed into Gold
@@ -118,58 +120,42 @@ ranked_registration AS (
 
 -- STEP 2C: BUILD THE FINAL GOLD-READY RECORD
 SELECT
-    -- Generate a surrogate key from the student and course enrollment
-    xxhash64(
-        rs.id_student,
-        rs.code_module,
-        rs.code_presentation
-    ) AS student_key,
-
     -- Preserve the original student identifier
     rs.id_student,
-
+ 
     -- Create a readable course key from the module and presentation
     concat(
         rs.code_module,
         '_',
         rs.code_presentation
     ) AS course_key,
-
+ 
     -- Student demographic attributes
     rs.gender,
     rs.region,
     rs.age_band,
-
+ 
     -- Student educational and socioeconomic background
     rs.highest_education,
     rs.imd_band,
-
+ 
     -- Student academic history and study load
     rs.num_of_prev_attempts,
     rs.studied_credits,
-
+ 
     -- Student characteristic
     rs.disability,
-
+ 
     -- Final outcome for this student/course enrollment
     rs.final_result,
-
+ 
     -- Registration information.
     rr.date_registration,
     rr.date_unregistration,
-
-    -- Data-quality check for the required enrollment keys
-    CASE
-        WHEN rs.id_student IS NULL
-          OR rs.code_module IS NULL
-          OR rs.code_presentation IS NULL
-            THEN 'FAIL'
-        ELSE 'PASS'
-    END AS quality_status,
-
+ 
     -- Preserve the Silver processing timestamp for lineage
     rs.silver_processed_timestamp
-
+ 
 FROM ranked_students AS rs
 
 -- Keep the student record even when no registration record exists
@@ -190,15 +176,13 @@ MERGE INTO oulad.oulad_gold.dim_student AS target
 
 USING dim_student_ready AS source
 
--- Match using the surrogate enrollment key
-ON target.student_key = source.student_key
-
+-- Match using the natural enrollment key.
+ON target.id_student = source.id_student
+AND target.course_key = source.course_key
 
 -- If the student/course enrollment already exists, update its attributes and refresh Gold metadata
 WHEN MATCHED THEN
     UPDATE SET
-        target.id_student = source.id_student,
-        target.course_key = source.course_key,
         target.gender = source.gender,
         target.region = source.region,
         target.age_band = source.age_band,
@@ -210,7 +194,6 @@ WHEN MATCHED THEN
         target.final_result = source.final_result,
         target.date_registration = source.date_registration,
         target.date_unregistration = source.date_unregistration,
-        target.quality_status = source.quality_status,
 
         -- Preserve the latest Silver lineage timestamp
         target.silver_processed_timestamp = source.silver_processed_timestamp,
@@ -223,7 +206,6 @@ WHEN MATCHED THEN
 -- If the student/course enrollment does not exist, insert a new record
 WHEN NOT MATCHED THEN
     INSERT (
-        student_key,
         id_student,
         course_key,
         gender,
@@ -237,14 +219,12 @@ WHEN NOT MATCHED THEN
         final_result,
         date_registration,
         date_unregistration,
-        quality_status,
         silver_processed_timestamp,
         gold_processed_timestamp,
         gold_processed_date
     )
-
+ 
     VALUES (
-        source.student_key,
         source.id_student,
         source.course_key,
         source.gender,
@@ -258,7 +238,6 @@ WHEN NOT MATCHED THEN
         source.final_result,
         source.date_registration,
         source.date_unregistration,
-        source.quality_status,
         source.silver_processed_timestamp,
         current_timestamp(),
         current_date()
