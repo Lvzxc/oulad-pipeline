@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_date (
 
     -- Primary key for the date dimension.
-    date_key BIGINT,
+    date_key BIGINT GENERATED ALWAYS AS IDENTITY,
 
     -- Original OULAD relative-day value.
     -- Example: -5 = 5 days before the module presentation starts
@@ -74,16 +74,13 @@ FROM overall_range;
 -- Generate one record for every relative day in the OULAD date range.
 CREATE OR REPLACE TEMP VIEW dim_date_ready AS
 SELECT
-    -- Use the relative day itself as the date key.
-    relative_day AS date_key,
-    -- Preserve the original OULAD relative-day value.
+
     relative_day,
     -- Convert relative days into course-relative weeks.
     --  Example: Day -7 to -1  -> Week -1
     --           Day  0 to  6  -> Week  0
     CAST(FLOOR(relative_day / 7) AS BIGINT) AS relative_week
-
-    FROM dim_date_range
+FROM dim_date_range
 
 -- Generate every integer relative day between the minimum and maximum dates.
 LATERAL VIEW EXPLODE(
@@ -94,13 +91,12 @@ LATERAL VIEW EXPLODE(
 MERGE INTO oulad.oulad_gold.dim_date AS target
 USING dim_date_ready AS source
 
--- Match records using the relative date key.
-ON target.date_key = source.date_key
+-- Match records using the natural relative-day value.
+ON target.relative_day = source.relative_day
 
 -- If the relative day already exists, update its attributes and refresh the Gold processing metadata.
 WHEN MATCHED THEN
     UPDATE SET
-        target.relative_day = source.relative_day,
         target.relative_week = source.relative_week,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
@@ -108,14 +104,12 @@ WHEN MATCHED THEN
 -- If the relative day does not yet exist, insert it.
 WHEN NOT MATCHED THEN
     INSERT (
-        date_key,
         relative_day,
         relative_week,
         gold_processed_timestamp,
         gold_processed_date
     )
     VALUES (
-        source.date_key,
         source.relative_day,
         source.relative_week,
         current_timestamp(),
