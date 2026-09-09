@@ -17,7 +17,7 @@ USING (
     SELECT
         v.id_site,
         c.course_key,
-        v.activity_type,
+        UPPER(TRIM(v.activity_type)) AS activity_type,
         v.week_from,
         v.week_to,
         CURRENT_TIMESTAMP AS silver_processed_timestamp,
