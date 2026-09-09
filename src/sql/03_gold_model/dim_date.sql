@@ -11,14 +11,6 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_date (
     -- Relative week derived from the relative day.
     relative_week BIGINT,
 
-    -- Describes the position of the relative day in the course timeline.
-    course_phase STRING,
-
-    -- Result of the data quality checks.
-    -- FAIL = relative_day is missing. 
-    -- PASS = relative_day is present and valid.
-    quality_status STRING,
-
     -- Timestamp when the record was processed into Gold.
     gold_processed_timestamp TIMESTAMP,
 
@@ -79,14 +71,6 @@ SELECT
 
 FROM overall_range;
 
--- Find the longest module presentation length from Silver.
--- This is used only to classify relative dates into "During Course" or "After Course".
-
-CREATE OR REPLACE TEMP VIEW max_course_length AS
-SELECT
-    MAX(module_presentation_length) AS max_length
-FROM oulad.oulad_silver.courses_silver;
-
 -- Generate one record for every relative day in the OULAD date range.
 CREATE OR REPLACE TEMP VIEW dim_date_ready AS
 SELECT
@@ -97,48 +81,15 @@ SELECT
     -- Convert relative days into course-relative weeks.
     --  Example: Day -7 to -1  -> Week -1
     --           Day  0 to  6  -> Week  0
-    CAST(FLOOR(relative_day / 7) AS BIGINT) AS relative_week,
-    -- Classify the relative day according to its position in the overall course timeline.
-    CASE
-        -- Negative relative days occur before the course starts.
-        WHEN relative_day < 0
-            THEN 'Before Course'
-        
-        -- Day 0 represents the start of the course presentation.
-        WHEN relative_day = 0
-            THEN 'Course Start'
-       
-        -- Days up to the longest known presentation length
-        -- are classified as occurring during a course.
-        WHEN relative_day <= m.max_length
-            THEN 'During Course'
+    CAST(FLOOR(relative_day / 7) AS BIGINT) AS relative_week
 
-        -- Dates beyond the longest known course length are
-        -- classified separately rather than treated as a DQ failure.
-        ELSE 'After Course'
+    FROM dim_date_range
 
-    END AS course_phase,
-
-    -- Data-quality check for the generated relative day.
-    -- FAIL: The relative day is missing, so the date cannot be identified or used for time-based analysis.
-    -- PASS: The relative day exists and can be used in the dimension.
-    -- No WARN condition is applied because there is no defined OULAD business rule stating that a particular relative-day value is suspicious or invalid.
-    CASE
-        WHEN relative_day IS NULL
-            THEN 'FAIL'
-        ELSE 'PASS'
-    END AS quality_status
-
-FROM dim_date_range
-
--- Add the longest course length so it can be used to determine the course phase.
-CROSS JOIN max_course_length AS m
-
--- Generate every integer relative day between the minimum and maximum dates found across the Silver source tables.
+-- Generate every integer relative day between the minimum and maximum dates.
 LATERAL VIEW EXPLODE(
     SEQUENCE(min_date, max_date)
 ) AS relative_day;
-
+    
 -- Merge the prepared relative-date records into the Gold dimension.
 MERGE INTO oulad.oulad_gold.dim_date AS target
 USING dim_date_ready AS source
@@ -146,14 +97,11 @@ USING dim_date_ready AS source
 -- Match records using the relative date key.
 ON target.date_key = source.date_key
 
-
 -- If the relative day already exists, update its attributes and refresh the Gold processing metadata.
 WHEN MATCHED THEN
     UPDATE SET
         target.relative_day = source.relative_day,
         target.relative_week = source.relative_week,
-        target.course_phase = source.course_phase,
-        target.quality_status = source.quality_status,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
 
@@ -163,8 +111,6 @@ WHEN NOT MATCHED THEN
         date_key,
         relative_day,
         relative_week,
-        course_phase,
-        quality_status,
         gold_processed_timestamp,
         gold_processed_date
     )
@@ -172,8 +118,6 @@ WHEN NOT MATCHED THEN
         source.date_key,
         source.relative_day,
         source.relative_week,
-        source.course_phase,
-        source.quality_status,
         current_timestamp(),
         current_date()
     );
