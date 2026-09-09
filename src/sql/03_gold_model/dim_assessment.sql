@@ -10,12 +10,13 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
 
     -- Assessment attributes
     assessment_type STRING,
-    assessment_date BIGINT,   -- relative-day offset; NULL for some Exam rows (due date unknown at source)
-    weight DOUBLE,
+    assessment_date INT,   -- relative-day offset; NULL for some Exam rows (due date unknown at source)
+    weight INT,
 
-    -- Original Silver processing timestamp
+    -- Original Silver processing timestamp and date
     -- Used for data lineage and identifying the latest record
     silver_processed_timestamp TIMESTAMP,
+    silver_processed_date DATE,
 
     -- Timestamp and date when the record was processed into Gold
     gold_processed_timestamp TIMESTAMP,
@@ -33,9 +34,10 @@ SELECT
     code_module,
     code_presentation,
     assessment_type,
-    date AS assessment_date,
-    weight,
-    silver_processed_timestamp
+    CAST(date AS INT) AS assessment_date,
+    CAST(weight AS INT) AS weight,
+    silver_processed_timestamp,
+    silver_processed_date
 
 FROM oulad.oulad_silver.assessment_silver;
 
@@ -56,6 +58,7 @@ WHEN MATCHED THEN
         target.assessment_date = source.assessment_date,
         target.weight = source.weight,
         target.silver_processed_timestamp = source.silver_processed_timestamp,
+        target.silver_processed_date = source.silver_processed_date,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
 
@@ -70,6 +73,7 @@ WHEN NOT MATCHED THEN
         assessment_date,
         weight,
         silver_processed_timestamp,
+        silver_processed_date,
         gold_processed_timestamp,
         gold_processed_date
     )
@@ -81,6 +85,7 @@ WHEN NOT MATCHED THEN
         source.assessment_date,
         source.weight,
         source.silver_processed_timestamp,
+        source.silver_processed_date,
         current_timestamp(),
         current_date()
     );
