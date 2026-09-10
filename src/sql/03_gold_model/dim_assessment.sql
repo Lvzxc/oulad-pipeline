@@ -6,8 +6,6 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
     -- Natural/business key columns
     id_assessment BIGINT,
     course_key BIGINT NOT NULL,         
-    code_module STRING,
-    code_presentation STRING,
 
     -- Assessment attributes
     assessment_type STRING,
@@ -17,10 +15,6 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
     -- Lineage
     silver_processed_timestamp TIMESTAMP,
     silver_processed_date DATE,
-    gold_processed_timestamp TIMESTAMP,
-    gold_processed_date DATE,
-
-    PRIMARY KEY (assessment_key)
 );
 
 -- Prepare cleaned Silver records for Gold
