@@ -5,6 +5,19 @@ WITH base AS (
     FROM oulad.oulad_silver.student_assessment_silver
 ),
 
+-- Expected values are derived from Bronze to avoid hard-coded counts.
+bronze_expectations AS (
+    SELECT
+        COUNT(*) AS bronze_count,
+        SUM(
+            CASE
+                WHEN CAST(score AS STRING) = '?' THEN 1
+                ELSE 0
+            END
+        ) AS expected_null_scores
+    FROM oulad.oulad_bronze.student_assessment_bronze
+),
+
 assessment_keys AS (
     SELECT DISTINCT
         id_assessment
@@ -22,17 +35,16 @@ student_keys AS (
 dq_results AS (
 
     -- Volume check
-    -- Bronze contained 173,912 rows and all business keys were valid.
     SELECT
         'student_assessment_silver' AS table_name,
         'Row count' AS check_name,
         'VOLUME' AS check_type,
         COUNT(*) AS records_checked,
-        CASE
-            WHEN COUNT(*) = 173912 THEN 0
-            ELSE ABS(COUNT(*) - 173912)
-        END AS failures
+        ABS(COUNT(*) - e.bronze_count) AS failures,
+        CAST(e.bronze_count AS STRING) AS expected_value
     FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.bronze_count
 
     UNION ALL
 
@@ -42,7 +54,8 @@ dq_results AS (
         'Missing id_assessment',
         'NULL',
         COUNT(*),
-        COUNT_IF(id_assessment IS NULL)
+        COUNT_IF(id_assessment IS NULL),
+        '0'
     FROM base
 
     UNION ALL
@@ -52,7 +65,8 @@ dq_results AS (
         'Missing id_student',
         'NULL',
         COUNT(*),
-        COUNT_IF(id_student IS NULL)
+        COUNT_IF(id_student IS NULL),
+        '0'
     FROM base
 
     UNION ALL
@@ -63,7 +77,8 @@ dq_results AS (
         'Missing date_submitted',
         'NULL',
         COUNT(*),
-        COUNT_IF(date_submitted IS NULL)
+        COUNT_IF(date_submitted IS NULL),
+        '0'
     FROM base
 
     UNION ALL
@@ -73,20 +88,23 @@ dq_results AS (
         'Missing is_banked',
         'NULL',
         COUNT(*),
-        COUNT_IF(is_banked IS NULL)
+        COUNT_IF(is_banked IS NULL),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Bronze contained 173 '?' values in score.
-    -- Silver intentionally converts these to NULL.
+    -- Score NULLs are expected when Bronze contains '?' values.
     SELECT
         'student_assessment_silver',
         'Missing score',
         'NULL',
         COUNT(*),
-        COUNT_IF(score IS NULL)
+        COUNT_IF(score IS NULL),
+        CAST(e.expected_null_scores AS STRING)
     FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.expected_null_scores
 
     UNION ALL
 
@@ -96,19 +114,20 @@ dq_results AS (
         'Duplicate student-assessment business key',
         'UNIQUE',
         COUNT(*),
-        COUNT(*) - COUNT(DISTINCT STRUCT(id_assessment, id_student))
+        COUNT(*) - COUNT(DISTINCT STRUCT(id_assessment, id_student)),
+        '0'
     FROM base
 
     UNION ALL
 
     -- Score should no longer contain unresolved source sentinels.
-    -- STRING casting is used only for validation across the typed Silver column.
     SELECT
         'student_assessment_silver',
         'Unresolved sentinel (?) in score',
         'SENTINEL',
         COUNT(*),
-        COUNT_IF(CAST(score AS STRING) = '?')
+        COUNT_IF(CAST(score AS STRING) = '?'),
+        '0'
     FROM base
 
     UNION ALL
@@ -119,7 +138,11 @@ dq_results AS (
         'Score outside valid range',
         'RANGE',
         COUNT(*),
-        COUNT_IF(score IS NOT NULL AND (score < 0 OR score > 100))
+        COUNT_IF(
+            score IS NOT NULL
+            AND (score < 0 OR score > 100)
+        ),
+        '0'
     FROM base
 
     UNION ALL
@@ -133,7 +156,8 @@ dq_results AS (
         COUNT_IF(
             is_banked IS NOT NULL
             AND is_banked NOT IN (0, 1)
-        )
+        ),
+        '0'
     FROM base
 
     UNION ALL
@@ -144,7 +168,8 @@ dq_results AS (
         'Assessment without matching assessment definition',
         'FOREIGN KEY',
         COUNT(*),
-        COUNT_IF(a.id_assessment IS NULL)
+        COUNT_IF(a.id_assessment IS NULL),
+        '0'
     FROM base b
     LEFT JOIN assessment_keys a
         ON b.id_assessment = a.id_assessment
@@ -157,7 +182,8 @@ dq_results AS (
         'Assessment without matching student',
         'FOREIGN KEY',
         COUNT(*),
-        COUNT_IF(s.id_student IS NULL)
+        COUNT_IF(s.id_student IS NULL),
+        '0'
     FROM base b
     LEFT JOIN student_keys s
         ON b.id_student = s.id_student
@@ -170,7 +196,8 @@ dq_results AS (
         'Missing ingestion timestamp',
         'LINEAGE',
         COUNT(*),
-        COUNT_IF(ingestion_timestamp IS NULL)
+        COUNT_IF(ingestion_timestamp IS NULL),
+        '0'
     FROM base
 
     UNION ALL
@@ -180,8 +207,25 @@ dq_results AS (
         'Missing ingestion date',
         'LINEAGE',
         COUNT(*),
-        COUNT_IF(ingestion_date IS NULL)
+        COUNT_IF(ingestion_date IS NULL),
+        '0'
     FROM base
+),
+
+-- Calculate failure percentage before applying thresholds.
+measured AS (
+    SELECT
+        table_name,
+        check_name,
+        check_type,
+        records_checked,
+        failures,
+        expected_value,
+        ROUND(
+            failures * 100.0 / NULLIF(records_checked, 0),
+            2
+        ) AS failure_pct
+    FROM dq_results
 )
 
 SELECT
@@ -190,65 +234,72 @@ SELECT
     check_type,
     records_checked,
     failures,
-    ROUND(
-        failures * 100.0 / NULLIF(records_checked, 0),
-        2
-    ) AS failure_percentage,
+    expected_value,
+    failure_pct,
 
+    -- Apply the thresholds defined in the DQ framework.
     CASE
-        -- Expected volume after transformation
-        WHEN check_type = 'VOLUME'
-             AND failures = 0 THEN 'PASS'
-        WHEN check_type = 'VOLUME'
-             AND failures > 0 THEN 'FAIL'
 
-        -- Required fields
+        -- Expected score NULLs are acceptable when they match Bronze.
+        WHEN check_name = 'Missing score'
+             AND CAST(failures AS STRING) = expected_value
+        THEN 'PASS'
+
+        -- No actual failures means the check passes.
+        WHEN failures = 0
+        THEN 'PASS'
+
+        -- Mandatory key fields: any NULL is a FAIL.
         WHEN check_name IN (
             'Missing id_assessment',
-            'Missing id_student',
-            'Missing date_submitted',
-            'Missing is_banked'
+            'Missing id_student'
         )
-        AND failures = 0 THEN 'PASS'
-        WHEN check_name IN (
-            'Missing id_assessment',
-            'Missing id_student',
-            'Missing date_submitted',
-            'Missing is_banked'
-        )
-        AND failures > 0 THEN 'FAIL'
+        THEN 'FAIL'
 
-        -- Score NULLs are expected from Bronze '?' sentinel conversion.
-        WHEN check_name = 'Missing score'
-             AND failures = 173 THEN 'PASS'
-        WHEN check_name = 'Missing score'
-             AND failures <> 173 THEN 'REVIEW'
+        -- Other NULL fields: 1% warning threshold.
+        WHEN check_type = 'NULL'
+             AND failure_pct <= 1
+        THEN 'WARN'
 
-        -- These checks should have zero failures in Silver.
+        WHEN check_type = 'NULL'
+        THEN 'FAIL'
+
+        -- UNIQUE / RANGE / ACCEPTED VALUE: 1% warning threshold.
         WHEN check_type IN (
             'UNIQUE',
-            'SENTINEL',
             'RANGE',
-            'ACCEPTED VALUE',
-            'FOREIGN KEY',
-            'LINEAGE'
+            'ACCEPTED VALUE'
         )
-        AND failures = 0 THEN 'PASS'
+        AND failure_pct <= 1
+        THEN 'WARN'
 
         WHEN check_type IN (
             'UNIQUE',
-            'SENTINEL',
             'RANGE',
-            'ACCEPTED VALUE',
-            'FOREIGN KEY',
+            'ACCEPTED VALUE'
+        )
+        THEN 'FAIL'
+
+        -- FOREIGN KEY: 0.1% warning threshold.
+        WHEN check_type = 'FOREIGN KEY'
+             AND failure_pct <= 0.1
+        THEN 'WARN'
+
+        WHEN check_type = 'FOREIGN KEY'
+        THEN 'FAIL'
+
+        -- Other checks: 1% warning threshold.
+        WHEN check_type IN (
+            'SENTINEL',
             'LINEAGE'
         )
-        AND failures > 0 THEN 'FAIL'
+        AND failure_pct <= 1
+        THEN 'WARN'
 
-        ELSE 'REVIEW'
+        ELSE 'FAIL'
     END AS status
 
-FROM dq_results
+FROM measured
 
 ORDER BY
     CASE check_type

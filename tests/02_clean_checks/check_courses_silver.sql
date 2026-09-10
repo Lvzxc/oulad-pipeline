@@ -1,6 +1,18 @@
 -- COURSES SILVER DATA QUALITY VALIDATION
 
-WITH dq_results AS (
+WITH base AS (
+    SELECT *
+    FROM oulad.oulad_silver.courses_silver
+),
+
+-- Expected row count is derived from the current Bronze data.
+bronze_expectations AS (
+    SELECT
+        COUNT(*) AS bronze_count
+    FROM oulad.oulad_bronze.courses_bronze
+),
+
+dq_results AS (
 
     -- Volume check
     SELECT
@@ -8,23 +20,13 @@ WITH dq_results AS (
         'Row count' AS check_name,
         'VOLUME' AS check_type,
         COUNT(*) AS records_checked,
-        CASE
-            WHEN COUNT(*) = 22 THEN 0
-            ELSE ABS(COUNT(*) - 22)
-        END AS failures,
-        CASE
-            WHEN COUNT(*) = 22 THEN 0.00
-            ELSE ROUND(ABS(COUNT(*) - 22) / 22.0 * 100, 2)
-        END AS failure_percentage,
-        CASE
-            WHEN COUNT(*) = 22 THEN 'PASS'
-            ELSE 'FAIL'
-        END AS status
-    FROM oulad.oulad_silver.courses_silver
-
+        ABS(COUNT(*) - e.bronze_count) AS failures,
+        CAST(e.bronze_count AS STRING) AS expected_value
+    FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.bronze_count
 
     UNION ALL
-
 
     -- Missing module
     SELECT
@@ -32,29 +34,14 @@ WITH dq_results AS (
         'Missing code_module',
         'NULL',
         COUNT(*),
-        SUM(CASE
-            WHEN code_module IS NULL OR TRIM(code_module) = '' THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN code_module IS NULL OR TRIM(code_module) = '' THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100, 2
+        COUNT_IF(
+            code_module IS NULL
+            OR TRIM(code_module) = ''
         ),
-        CASE
-            WHEN SUM(CASE
-                WHEN code_module IS NULL OR TRIM(code_module) = '' THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Missing presentation
     SELECT
@@ -62,35 +49,14 @@ WITH dq_results AS (
         'Missing code_presentation',
         'NULL',
         COUNT(*),
-        SUM(CASE
-            WHEN code_presentation IS NULL
-              OR TRIM(code_presentation) = ''
-            THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN code_presentation IS NULL
-                  OR TRIM(code_presentation) = ''
-                THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100, 2
+        COUNT_IF(
+            code_presentation IS NULL
+            OR TRIM(code_presentation) = ''
         ),
-        CASE
-            WHEN SUM(CASE
-                WHEN code_presentation IS NULL
-                  OR TRIM(code_presentation) = ''
-                THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Missing duration
     SELECT
@@ -98,29 +64,11 @@ WITH dq_results AS (
         'Missing module presentation length',
         'NULL',
         COUNT(*),
-        SUM(CASE
-            WHEN module_presentation_length IS NULL THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN module_presentation_length IS NULL THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100, 2
-        ),
-        CASE
-            WHEN SUM(CASE
-                WHEN module_presentation_length IS NULL THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        COUNT_IF(module_presentation_length IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Positive duration
     SELECT
@@ -128,29 +76,11 @@ WITH dq_results AS (
         'Invalid module presentation length',
         'RANGE',
         COUNT(*),
-        SUM(CASE
-            WHEN module_presentation_length <= 0 THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN module_presentation_length <= 0 THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100, 2
-        ),
-        CASE
-            WHEN SUM(CASE
-                WHEN module_presentation_length <= 0 THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        COUNT_IF(module_presentation_length <= 0),
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Duplicate business key
     SELECT
@@ -161,24 +91,10 @@ WITH dq_results AS (
         COUNT(*) - COUNT(DISTINCT
             CONCAT(code_module, '|', code_presentation)
         ),
-        ROUND(
-            (COUNT(*) - COUNT(DISTINCT
-                CONCAT(code_module, '|', code_presentation)
-            )) / COUNT(*) * 100,
-            2
-        ),
-        CASE
-            WHEN COUNT(*) = COUNT(DISTINCT
-                CONCAT(code_module, '|', code_presentation)
-            )
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Sentinel check
     SELECT
@@ -186,36 +102,14 @@ WITH dq_results AS (
         'Unresolved sentinel (?) values',
         'SENTINEL',
         COUNT(*),
-        SUM(CASE
-            WHEN code_module = '?'
-              OR code_presentation = '?'
-            THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN code_module = '?'
-                  OR code_presentation = '?'
-                THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100,
-            2
+        COUNT_IF(
+            code_module = '?'
+            OR code_presentation = '?'
         ),
-        CASE
-            WHEN SUM(CASE
-                WHEN code_module = '?'
-                  OR code_presentation = '?'
-                THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Standardization check
     SELECT
@@ -223,36 +117,14 @@ WITH dq_results AS (
         'Unstandardized module/presentation values',
         'STANDARDIZATION',
         COUNT(*),
-        SUM(CASE
-            WHEN code_module <> UPPER(TRIM(code_module))
-              OR code_presentation <> UPPER(TRIM(code_presentation))
-            THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN code_module <> UPPER(TRIM(code_module))
-                  OR code_presentation <> UPPER(TRIM(code_presentation))
-                THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100,
-            2
+        COUNT_IF(
+            code_module <> UPPER(TRIM(code_module))
+            OR code_presentation <> UPPER(TRIM(code_presentation))
         ),
-        CASE
-            WHEN SUM(CASE
-                WHEN code_module <> UPPER(TRIM(code_module))
-                  OR code_presentation <> UPPER(TRIM(code_presentation))
-                THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Bronze lineage
     SELECT
@@ -260,30 +132,11 @@ WITH dq_results AS (
         'Missing Bronze ingestion timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(CASE
-            WHEN bronze_ingestion_timestamp IS NULL THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN bronze_ingestion_timestamp IS NULL THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100,
-            2
-        ),
-        CASE
-            WHEN SUM(CASE
-                WHEN bronze_ingestion_timestamp IS NULL THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
-
+        COUNT_IF(bronze_ingestion_timestamp IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
-
 
     -- Silver processing lineage
     SELECT
@@ -291,29 +144,85 @@ WITH dq_results AS (
         'Missing Silver processing timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(CASE
-            WHEN silver_processed_timestamp IS NULL THEN 1
-            ELSE 0
-        END),
-        ROUND(
-            SUM(CASE
-                WHEN silver_processed_timestamp IS NULL THEN 1
-                ELSE 0
-            END) / COUNT(*) * 100,
-            2
-        ),
-        CASE
-            WHEN SUM(CASE
-                WHEN silver_processed_timestamp IS NULL THEN 1
-                ELSE 0
-            END) = 0
-            THEN 'PASS'
-            ELSE 'FAIL'
-        END
-    FROM oulad.oulad_silver.courses_silver
+        COUNT_IF(silver_processed_timestamp IS NULL),
+        '0'
+    FROM base
+),
 
+-- Calculate failure percentage before applying thresholds.
+measured AS (
+    SELECT
+        table_name,
+        check_name,
+        check_type,
+        records_checked,
+        failures,
+        expected_value,
+        ROUND(
+            failures * 100.0 / NULLIF(records_checked, 0),
+            2
+        ) AS failure_pct
+    FROM dq_results
 )
 
-SELECT *
-FROM dq_results
-ORDER BY check_name;
+SELECT
+    table_name,
+    check_name,
+    check_type,
+    records_checked,
+    failures,
+    expected_value,
+    failure_pct,
+
+    -- Apply the thresholds defined in the DQ framework.
+    CASE
+        -- No actual failures means the check passes.
+        WHEN failures = 0
+        THEN 'PASS'
+
+        -- Mandatory key fields: any NULL is a FAIL.
+        WHEN check_type = 'NULL'
+             AND check_name IN (
+                 'Missing code_module',
+                 'Missing code_presentation'
+             )
+        THEN 'FAIL'
+
+        -- UNIQUE / RANGE: 1% warning threshold.
+        WHEN check_type IN ('UNIQUE', 'RANGE')
+             AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type IN ('UNIQUE', 'RANGE')
+        THEN 'FAIL'
+
+        -- Non-key NULL: 1% warning threshold.
+        WHEN check_type = 'NULL'
+             AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type = 'NULL'
+        THEN 'FAIL'
+
+        -- Other checks: 1% warning threshold.
+        WHEN check_type IN (
+            'SENTINEL',
+            'STANDARDIZATION',
+            'LINEAGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
+
+        ELSE 'FAIL'
+    END AS status
+
+FROM measured
+
+ORDER BY
+    CASE
+        WHEN status = 'FAIL' THEN 1
+        WHEN status = 'WARN' THEN 2
+        ELSE 3
+    END,
+    check_type,
+    check_name;

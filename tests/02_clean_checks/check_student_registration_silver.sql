@@ -1,21 +1,58 @@
 -- STUDENT REGISTRATION SILVER DATA QUALITY VALIDATION
 
-WITH checks AS (
+WITH base AS (
+    SELECT *
+    FROM oulad.oulad_silver.student_registration_silver
+),
+
+-- Expected values are derived from Bronze to avoid hard-coded counts.
+bronze_expectations AS (
+    SELECT
+        COUNT(*) AS bronze_count,
+        SUM(
+            CASE
+                WHEN TRIM(date_registration) = '?' THEN 1
+                ELSE 0
+            END
+        ) AS expected_null_date_registration,
+        SUM(
+            CASE
+                WHEN TRIM(date_unregistration) = '?' THEN 1
+                ELSE 0
+            END
+        ) AS expected_null_date_unregistration
+    FROM oulad.oulad_bronze.student_registration_bronze
+),
+
+student_keys AS (
+    SELECT DISTINCT
+        id_student,
+        code_module,
+        code_presentation
+    FROM oulad.oulad_silver.student_info_silver
+    WHERE id_student IS NOT NULL
+),
+
+course_keys AS (
+    SELECT DISTINCT
+        code_module,
+        code_presentation
+    FROM oulad.oulad_silver.courses_silver
+),
+
+dq_results AS (
 
     -- Volume check
     SELECT
         'student_registration_silver' AS table_name,
         'Row count' AS check_name,
         'VOLUME' AS check_type,
-        (SELECT COUNT(*)
-         FROM oulad.oulad_silver.student_registration_silver) AS records_checked,
-        ABS(
-            (SELECT COUNT(*)
-             FROM oulad.oulad_silver.student_registration_silver)
-            -
-            (SELECT COUNT(*)
-             FROM oulad.oulad_bronze.student_registration_bronze)
-        ) AS failures
+        COUNT(*) AS records_checked,
+        ABS(COUNT(*) - e.bronze_count) AS failures,
+        CAST(e.bronze_count AS STRING) AS expected_value
+    FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.bronze_count
 
     UNION ALL
 
@@ -25,8 +62,9 @@ WITH checks AS (
         'Missing code_module',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_module IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(code_module IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -35,8 +73,9 @@ WITH checks AS (
         'Missing code_presentation',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_presentation IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(code_presentation IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -45,46 +84,37 @@ WITH checks AS (
         'Missing id_student',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN id_student IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(id_student IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
-    -- date_registration: Bronze '?' should become NULL
+    -- date_registration: Bronze '?' should become NULL.
     SELECT
         'student_registration_silver',
-        'Unexpected missing date_registration',
+        'Missing date_registration',
         'NULL',
         COUNT(*),
-        ABS(
-            COUNT(*) FILTER (WHERE date_registration IS NULL)
-            -
-            (
-                SELECT COUNT(*)
-                FROM oulad.oulad_bronze.student_registration_bronze
-                WHERE TRIM(date_registration) = '?'
-            )
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(date_registration IS NULL),
+        CAST(e.expected_null_date_registration AS STRING)
+    FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.expected_null_date_registration
 
     UNION ALL
 
-    -- date_unregistration: NULL is expected for '?' values
+    -- date_unregistration: NULL is expected for '?' values.
     SELECT
         'student_registration_silver',
-        'Unexpected missing date_unregistration',
+        'Missing date_unregistration',
         'NULL',
         COUNT(*),
-        ABS(
-            COUNT(*) FILTER (WHERE date_unregistration IS NULL)
-            -
-            (
-                SELECT COUNT(*)
-                FROM oulad.oulad_bronze.student_registration_bronze
-                WHERE TRIM(date_unregistration) = '?'
-            )
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(date_unregistration IS NULL),
+        CAST(e.expected_null_date_unregistration AS STRING)
+    FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.expected_null_date_unregistration
 
     UNION ALL
 
@@ -99,8 +129,9 @@ WITH checks AS (
             code_module, '|',
             code_presentation, '|',
             id_student
-        ))
-    FROM oulad.oulad_silver.student_registration_silver
+        )),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -110,15 +141,12 @@ WITH checks AS (
         'Unresolved sentinel (?) values',
         'SENTINEL',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN code_module = '?'
-                  OR code_presentation = '?'
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(
+            code_module = '?'
+            OR code_presentation = '?'
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -128,15 +156,12 @@ WITH checks AS (
         'Unstandardized module/presentation values',
         'STANDARDIZATION',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN code_module <> UPPER(TRIM(code_module))
-                  OR code_presentation <> UPPER(TRIM(code_presentation))
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(
+            code_module <> UPPER(TRIM(code_module))
+            OR code_presentation <> UPPER(TRIM(code_presentation))
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -146,15 +171,12 @@ WITH checks AS (
         'Invalid date_registration range',
         'RANGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN date_registration IS NOT NULL
-                 AND date_registration < -365
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(
+            date_registration IS NOT NULL
+            AND date_registration < -365
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -164,15 +186,12 @@ WITH checks AS (
         'Invalid date_unregistration range',
         'RANGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN date_unregistration IS NOT NULL
-                 AND date_unregistration < -365
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(
+            date_unregistration IS NOT NULL
+            AND date_unregistration < -365
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -182,13 +201,13 @@ WITH checks AS (
         'Registration without matching student',
         'FOREIGN KEY',
         COUNT(*),
-        COUNT(*)
-    FROM oulad.oulad_silver.student_registration_silver r
-    LEFT JOIN oulad.oulad_silver.student_info_silver s
+        COUNT_IF(s.id_student IS NULL),
+        '0'
+    FROM base r
+    LEFT JOIN student_keys s
         ON r.id_student = s.id_student
         AND r.code_module = s.code_module
         AND r.code_presentation = s.code_presentation
-    WHERE s.id_student IS NULL
 
     UNION ALL
 
@@ -198,12 +217,12 @@ WITH checks AS (
         'Registration without matching course',
         'FOREIGN KEY',
         COUNT(*),
-        COUNT(*)
-    FROM oulad.oulad_silver.student_registration_silver r
-    LEFT JOIN oulad.oulad_silver.courses_silver c
+        COUNT_IF(c.code_module IS NULL),
+        '0'
+    FROM base r
+    LEFT JOIN course_keys c
         ON r.code_module = c.code_module
         AND r.code_presentation = c.code_presentation
-    WHERE c.code_module IS NULL
 
     UNION ALL
 
@@ -213,13 +232,9 @@ WITH checks AS (
         'Missing ingestion timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN ingestion_timestamp IS NULL THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(ingestion_timestamp IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -228,13 +243,25 @@ WITH checks AS (
         'Missing ingestion date',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN ingestion_date IS NULL THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.student_registration_silver
+        COUNT_IF(ingestion_date IS NULL),
+        '0'
+    FROM base
+),
+
+-- Calculate failure percentage before applying thresholds.
+measured AS (
+    SELECT
+        table_name,
+        check_name,
+        check_type,
+        records_checked,
+        failures,
+        expected_value,
+        ROUND(
+            failures * 100.0 / NULLIF(records_checked, 0),
+            2
+        ) AS failure_pct
+    FROM dq_results
 )
 
 SELECT
@@ -243,29 +270,75 @@ SELECT
     check_type,
     records_checked,
     failures,
-    ROUND(
-        failures * 100.0 / NULLIF(records_checked, 0),
-        2
-    ) AS failure_percentage,
+    expected_value,
+    failure_pct,
 
+    -- Apply the thresholds defined in the DQ framework.
     CASE
+
+        -- Expected date NULLs are acceptable when they match Bronze.
         WHEN check_name IN (
-            'Unexpected missing date_registration',
-            'Unexpected missing date_unregistration'
+            'Missing date_registration',
+            'Missing date_unregistration'
         )
-        AND failures = 0
-            THEN 'PASS'
+        AND CAST(failures AS STRING) = expected_value
+        THEN 'PASS'
 
+        -- No actual failures means the check passes.
         WHEN failures = 0
-            THEN 'PASS'
+        THEN 'PASS'
 
-        WHEN failures * 100.0 / NULLIF(records_checked, 0) <= 1
-            THEN 'WARN'
+        -- Mandatory key fields: any NULL is a FAIL.
+        WHEN check_name IN (
+            'Missing code_module',
+            'Missing code_presentation',
+            'Missing id_student'
+        )
+        THEN 'FAIL'
+
+        -- UNIQUE / RANGE: 1% warning threshold.
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE'
+        )
+        THEN 'FAIL'
+
+        -- Non-key NULL: 1% warning threshold.
+        WHEN check_type = 'NULL'
+             AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type = 'NULL'
+        THEN 'FAIL'
+
+        -- FOREIGN KEY: 0.1% warning threshold.
+        WHEN check_type = 'FOREIGN KEY'
+             AND failure_pct <= 0.1
+        THEN 'WARN'
+
+        WHEN check_type = 'FOREIGN KEY'
+        THEN 'FAIL'
+
+        -- Other checks: 1% warning threshold.
+        WHEN check_type IN (
+            'SENTINEL',
+            'STANDARDIZATION',
+            'LINEAGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
 
         ELSE 'FAIL'
     END AS status
 
-FROM checks
+FROM measured
 
 ORDER BY
     CASE

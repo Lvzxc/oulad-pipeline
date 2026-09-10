@@ -1,21 +1,35 @@
 -- VLE SILVER DATA QUALITY VALIDATION
 
-WITH checks AS (
+WITH base AS (
+    SELECT *
+    FROM oulad.oulad_silver.vle_silver
+),
 
-    -- Volume / deduplication check
+-- Silver is expected to contain fewer rows than Bronze after removing
+-- records that are not needed for the Silver representation.
+bronze_expectations AS (
+    SELECT
+        COUNT(*) AS bronze_count
+    FROM oulad.oulad_bronze.vle_bronze
+),
+
+dq_results AS (
+
+    -- Volume / row reduction check
     SELECT
         'vle_silver' AS table_name,
         'Bronze-to-Silver row reduction' AS check_name,
         'VOLUME' AS check_type,
         COUNT(*) AS records_checked,
         CASE
-            WHEN COUNT(*) <
-                 (SELECT COUNT(*)
-                  FROM oulad.oulad_bronze.vle_bronze)
+            WHEN COUNT(*) < e.bronze_count
             THEN 0
-            ELSE 1
-        END AS failures
-    FROM oulad.oulad_silver.vle_silver
+            ELSE ABS(COUNT(*) - e.bronze_count)
+        END AS failures,
+        CONCAT('< ', CAST(e.bronze_count AS STRING)) AS expected_value
+    FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.bronze_count
 
     UNION ALL
 
@@ -25,8 +39,9 @@ WITH checks AS (
         'Missing id_site',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN id_site IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(id_site IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -35,8 +50,9 @@ WITH checks AS (
         'Missing code_module',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_module IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(code_module IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -45,8 +61,9 @@ WITH checks AS (
         'Missing code_presentation',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_presentation IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(code_presentation IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -55,8 +72,9 @@ WITH checks AS (
         'Missing activity_type',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN activity_type IS NULL THEN 1 ELSE 0 END)
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(activity_type IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -66,8 +84,9 @@ WITH checks AS (
         'Duplicate VLE site business key',
         'UNIQUE',
         COUNT(*),
-        COUNT(*) - COUNT(DISTINCT id_site)
-    FROM oulad.oulad_silver.vle_silver
+        COUNT(*) - COUNT(DISTINCT id_site),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -77,16 +96,13 @@ WITH checks AS (
         'Unresolved sentinel (?) values',
         'SENTINEL',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN code_module = '?'
-                  OR code_presentation = '?'
-                  OR activity_type = '?'
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(
+            code_module = '?'
+            OR code_presentation = '?'
+            OR activity_type = '?'
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -96,16 +112,13 @@ WITH checks AS (
         'Unstandardized module/presentation values',
         'STANDARDIZATION',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN code_module <> UPPER(TRIM(code_module))
-                  OR code_presentation <> UPPER(TRIM(code_presentation))
-                  OR activity_type <> LOWER(TRIM(activity_type))
-                THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(
+            code_module <> UPPER(TRIM(code_module))
+            OR code_presentation <> UPPER(TRIM(code_presentation))
+            OR activity_type <> LOWER(TRIM(activity_type))
+        ),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -115,12 +128,17 @@ WITH checks AS (
         'VLE site without matching course',
         'FOREIGN KEY',
         COUNT(*),
-        COUNT(*)
-    FROM oulad.oulad_silver.vle_silver v
-    LEFT JOIN oulad.oulad_silver.courses_silver c
+        COUNT_IF(c.code_module IS NULL),
+        '0'
+    FROM base v
+    LEFT JOIN (
+        SELECT DISTINCT
+            code_module,
+            code_presentation
+        FROM oulad.oulad_silver.courses_silver
+    ) c
         ON v.code_module = c.code_module
         AND v.code_presentation = c.code_presentation
-    WHERE c.code_module IS NULL
 
     UNION ALL
 
@@ -130,13 +148,9 @@ WITH checks AS (
         'Missing ingestion timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN ingestion_timestamp IS NULL THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(ingestion_timestamp IS NULL),
+        '0'
+    FROM base
 
     UNION ALL
 
@@ -145,13 +159,25 @@ WITH checks AS (
         'Missing ingestion date',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN ingestion_date IS NULL THEN 1
-                ELSE 0
-            END
-        )
-    FROM oulad.oulad_silver.vle_silver
+        COUNT_IF(ingestion_date IS NULL),
+        '0'
+    FROM base
+),
+
+-- Calculate failure percentage before applying thresholds.
+measured AS (
+    SELECT
+        table_name,
+        check_name,
+        check_type,
+        records_checked,
+        failures,
+        expected_value,
+        ROUND(
+            failures * 100.0 / NULLIF(records_checked, 0),
+            2
+        ) AS failure_pct
+    FROM dq_results
 )
 
 SELECT
@@ -160,22 +186,83 @@ SELECT
     check_type,
     records_checked,
     failures,
+    expected_value,
+    failure_pct,
 
-    ROUND(
-        failures * 100.0 /
-        NULLIF(records_checked, 0),
-        2
-    ) AS failure_percentage,
-
+    -- Apply the thresholds defined in the DQ framework.
     CASE
-        WHEN failures = 0 THEN 'PASS'
-        WHEN failures * 100.0 /
-             NULLIF(records_checked, 0) <= 1
-            THEN 'WARN'
+
+        -- Expected row reduction means Silver can legitimately
+        -- contain fewer records than Bronze.
+        WHEN check_name = 'Bronze-to-Silver row reduction'
+             AND records_checked < CAST(
+                 REPLACE(expected_value, '< ', '') AS BIGINT
+             )
+        THEN 'PASS'
+
+        -- No actual failures means the check passes.
+        WHEN failures = 0
+        THEN 'PASS'
+
+        -- Mandatory key fields: any NULL is a FAIL.
+        WHEN check_name IN (
+            'Missing id_site',
+            'Missing code_module',
+            'Missing code_presentation'
+        )
+        THEN 'FAIL'
+
+        -- UNIQUE / RANGE: 1% warning threshold.
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE'
+        )
+        THEN 'FAIL'
+
+        -- Non-key NULL: 1% warning threshold.
+        WHEN check_type = 'NULL'
+             AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type = 'NULL'
+        THEN 'FAIL'
+
+        -- FOREIGN KEY: 0.1% warning threshold.
+        WHEN check_type = 'FOREIGN KEY'
+             AND failure_pct <= 0.1
+        THEN 'WARN'
+
+        WHEN check_type = 'FOREIGN KEY'
+        THEN 'FAIL'
+
+        -- VOLUME: 2% warning threshold.
+        WHEN check_type = 'VOLUME'
+             AND failure_pct <= 2
+        THEN 'WARN'
+
+        WHEN check_type = 'VOLUME'
+        THEN 'FAIL'
+
+        -- Other checks: 1% warning threshold.
+        WHEN check_type IN (
+            'SENTINEL',
+            'STANDARDIZATION',
+            'LINEAGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
+
         ELSE 'FAIL'
     END AS status
 
-FROM checks
+FROM measured
 
 ORDER BY
     CASE

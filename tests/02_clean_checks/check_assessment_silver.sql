@@ -5,10 +5,24 @@ WITH base AS (
     FROM oulad.oulad_silver.assessment_silver
 ),
 
+-- Expected values are derived from Bronze to avoid hard-coded counts.
+bronze_expectations AS (
+    SELECT
+        COUNT(*) AS bronze_count,
+        SUM(
+            CASE
+                WHEN CAST(date AS STRING) = '?' THEN 1
+                ELSE 0
+            END
+        ) AS expected_null_dates
+    FROM oulad.oulad_bronze.assessment_bronze
+),
+
+-- Silver values are expected to be standardized, so direct comparison is used.
 course_keys AS (
     SELECT DISTINCT
-        TRIM(UPPER(code_module)) AS code_module,
-        TRIM(UPPER(code_presentation)) AS code_presentation
+        code_module,
+        code_presentation
     FROM oulad.oulad_silver.courses_silver
 ),
 
@@ -20,11 +34,11 @@ dq_results AS (
         'Row count' AS check_name,
         'VOLUME' AS check_type,
         COUNT(*) AS records_checked,
-        CASE
-            WHEN COUNT(*) = 206 THEN 0
-            ELSE ABS(COUNT(*) - 206)
-        END AS failures
+        ABS(COUNT(*) - e.bronze_count) AS failures,
+        CAST(e.bronze_count AS STRING) AS expected_value
     FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.bronze_count
 
     UNION ALL
 
@@ -34,7 +48,8 @@ dq_results AS (
         'Missing id_assessment',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN id_assessment IS NULL THEN 1 ELSE 0 END)
+        COUNT_IF(id_assessment IS NULL),
+        '0'
     FROM base
 
     UNION ALL
@@ -44,7 +59,11 @@ dq_results AS (
         'Missing code_module',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_module IS NULL OR TRIM(code_module) = '' THEN 1 ELSE 0 END)
+        COUNT_IF(
+            code_module IS NULL
+            OR TRIM(code_module) = ''
+        ),
+        '0'
     FROM base
 
     UNION ALL
@@ -54,7 +73,11 @@ dq_results AS (
         'Missing code_presentation',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN code_presentation IS NULL OR TRIM(code_presentation) = '' THEN 1 ELSE 0 END)
+        COUNT_IF(
+            code_presentation IS NULL
+            OR TRIM(code_presentation) = ''
+        ),
+        '0'
     FROM base
 
     UNION ALL
@@ -64,166 +87,169 @@ dq_results AS (
         'Missing assessment_type',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN assessment_type IS NULL OR TRIM(assessment_type) = '' THEN 1 ELSE 0 END)
+        COUNT_IF(
+            assessment_type IS NULL
+            OR TRIM(assessment_type) = ''
+        ),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Date NULLs are allowed because Bronze contained documented '?' values
+    -- Date NULLs are expected when caused by '?' values in Bronze.
     SELECT
         'assessment_silver',
         'Missing assessment date',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN date IS NULL THEN 1 ELSE 0 END)
+        COUNT_IF(date IS NULL),
+        CAST(e.expected_null_dates AS STRING)
     FROM base
+    CROSS JOIN bronze_expectations e
+    GROUP BY e.expected_null_dates
 
     UNION ALL
 
-    -- Weight should be available and valid
+    -- Weight should be available and valid.
     SELECT
         'assessment_silver',
         'Missing weight',
         'NULL',
         COUNT(*),
-        SUM(CASE WHEN weight IS NULL THEN 1 ELSE 0 END)
+        COUNT_IF(weight IS NULL),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Business key uniqueness
+    -- Business key uniqueness.
     SELECT
         'assessment_silver',
         'Duplicate assessment business key',
         'UNIQUE',
         COUNT(*),
-        COUNT(*) - COUNT(DISTINCT id_assessment)
+        COUNT(*) - COUNT(DISTINCT id_assessment),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- No unresolved source sentinel values should remain
+    -- No unresolved source sentinel values should remain.
     SELECT
         'assessment_silver',
         'Unresolved sentinel (?) values',
         'SENTINEL',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN CAST(id_assessment AS STRING) = '?'
-                  OR code_module = '?'
-                  OR code_presentation = '?'
-                  OR assessment_type = '?'
-                  OR CAST(date AS STRING) = '?'
-                  OR CAST(weight AS STRING) = '?'
-                THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(
+            CAST(id_assessment AS STRING) = '?'
+            OR code_module = '?'
+            OR code_presentation = '?'
+            OR assessment_type = '?'
+            OR CAST(date AS STRING) = '?'
+            OR CAST(weight AS STRING) = '?'
+        ),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Weight range
+    -- Weight range.
     SELECT
         'assessment_silver',
         'Invalid weight range',
         'RANGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN weight < 0 OR weight > 100 THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(
+            weight < 0
+            OR weight > 100
+        ),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Assessment type validation
+    -- Assessment type validation.
     SELECT
         'assessment_silver',
         'Invalid assessment_type',
         'ACCEPTED VALUE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN assessment_type NOT IN ('TMA', 'CMA', 'Exam')
-                THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(
+            assessment_type NOT IN ('TMA', 'CMA', 'Exam')
+        ),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Standardization checks
+    -- Standardization checks.
     SELECT
         'assessment_silver',
         'Untrimmed module/presentation values',
         'STANDARDIZATION',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN code_module <> TRIM(code_module)
-                  OR code_presentation <> TRIM(code_presentation)
-                  OR assessment_type <> TRIM(assessment_type)
-                THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(
+            code_module <> TRIM(code_module)
+            OR code_presentation <> TRIM(code_presentation)
+            OR assessment_type <> TRIM(assessment_type)
+        ),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Foreign key to courses
+    -- Foreign key to courses.
     SELECT
         'assessment_silver',
         'Assessment without matching course',
         'FOREIGN KEY',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN c.code_module IS NULL THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(c.code_module IS NULL),
+        '0'
     FROM base a
     LEFT JOIN course_keys c
-        ON TRIM(UPPER(a.code_module)) = c.code_module
-       AND TRIM(UPPER(a.code_presentation)) = c.code_presentation
+        ON a.code_module = c.code_module
+       AND a.code_presentation = c.code_presentation
 
     UNION ALL
 
-    -- Bronze lineage
+    -- Bronze lineage.
     SELECT
         'assessment_silver',
         'Missing Bronze ingestion timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN bronze_ingestion_timestamp IS NULL THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(bronze_ingestion_timestamp IS NULL),
+        '0'
     FROM base
 
     UNION ALL
 
-    -- Silver processing metadata
+    -- Silver processing metadata.
     SELECT
         'assessment_silver',
         'Missing Silver processing timestamp',
         'LINEAGE',
         COUNT(*),
-        SUM(
-            CASE
-                WHEN silver_processed_timestamp IS NULL THEN 1
-                ELSE 0
-            END
-        )
+        COUNT_IF(silver_processed_timestamp IS NULL),
+        '0'
     FROM base
+),
+
+-- Calculate failure percentage before applying thresholds.
+measured AS (
+    SELECT
+        table_name,
+        check_name,
+        check_type,
+        records_checked,
+        failures,
+        expected_value,
+        ROUND(
+            failures * 100.0 / NULLIF(records_checked, 0),
+            2
+        ) AS failure_pct
+    FROM dq_results
 )
 
 SELECT
@@ -232,23 +258,84 @@ SELECT
     check_type,
     records_checked,
     failures,
-    ROUND(
-        failures * 100.0 / NULLIF(records_checked, 0),
-        2
-    ) AS failure_percentage,
+    expected_value,
+    failure_pct,
 
+    -- Apply the thresholds defined in the DQ framework.
     CASE
-        WHEN failures = 0 THEN 'PASS'
 
-        -- Assessment date NULLs are expected because
-        -- Bronze contained 11 documented '?' values.
+        -- Expected NULLs are acceptable when they match the source expectation.
         WHEN check_name = 'Missing assessment date'
-             AND failures = 11 THEN 'PASS'
+             AND CAST(failures AS STRING) = expected_value
+        THEN 'PASS'
+
+        -- No actual failures means the check passes.
+        WHEN failures = 0
+        THEN 'PASS'
+
+        -- Mandatory key fields: any NULL is a FAIL.
+        WHEN check_type = 'NULL'
+             AND check_name IN (
+                 'Missing id_assessment',
+                 'Missing code_module',
+                 'Missing code_presentation',
+                 'Missing assessment_type'
+             )
+        THEN 'FAIL'
+
+        -- UNIQUE / RANGE / ACCEPTED VALUE: 1% warning threshold.
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE',
+            'ACCEPTED VALUE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type IN (
+            'UNIQUE',
+            'RANGE',
+            'ACCEPTED VALUE'
+        )
+        THEN 'FAIL'
+
+        -- FOREIGN KEY: 0.1% warning threshold.
+        WHEN check_type = 'FOREIGN KEY'
+             AND failure_pct <= 0.1
+        THEN 'WARN'
+
+        WHEN check_type = 'FOREIGN KEY'
+        THEN 'FAIL'
+
+        -- VOLUME: 2% warning threshold.
+        WHEN check_type = 'VOLUME'
+             AND failure_pct <= 2
+        THEN 'WARN'
+
+        WHEN check_type = 'VOLUME'
+        THEN 'FAIL'
+
+        -- Non-key NULL: 1% warning threshold.
+        WHEN check_type = 'NULL'
+             AND failure_pct <= 1
+        THEN 'WARN'
+
+        WHEN check_type = 'NULL'
+        THEN 'FAIL'
+
+        -- Other checks: 1% warning threshold.
+        WHEN check_type IN (
+            'SENTINEL',
+            'STANDARDIZATION',
+            'LINEAGE'
+        )
+        AND failure_pct <= 1
+        THEN 'WARN'
 
         ELSE 'FAIL'
     END AS status
 
-FROM dq_results
+FROM measured
 
 ORDER BY
     CASE
