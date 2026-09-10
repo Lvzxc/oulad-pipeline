@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
 
     -- Lineage
     silver_processed_timestamp TIMESTAMP,
-    silver_processed_date DATE,
+    silver_processed_date DATE
 );
 
 -- Prepare cleaned Silver records for Gold
