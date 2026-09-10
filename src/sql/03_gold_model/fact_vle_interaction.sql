@@ -12,8 +12,8 @@ MERGE INTO oulad.oulad_gold.fact_vle_interaction AS tgt
 USING (
     SELECT
         ds.student_key,
-        dv.course_key,                          -- ✅ resolved via dim_vle
-        dv.site_key,                            -- ✅ surrogate key for site
+        dv.course_key,                         
+        dv.site_key,                            
         dd.date_key,
         sv.sum_click,
         CURRENT_TIMESTAMP AS gold_processed_timestamp,
