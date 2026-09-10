@@ -1,340 +1,291 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 0,
-   "metadata": {
-    "application/vnd.databricks.v1+cell": {
-     "cellMetadata": {
-      "byteLimit": 104857600,
-      "rowLimit": 1000
-     },
-     "inputWidgets": {},
-     "nuid": "5ca7035d-99a4-42e0-bf53-6bbe7bf12bcb",
-     "showTitle": false,
-     "tableResultSettingsMap": {},
-     "title": ""
-    }
-   },
-   "outputs": [],
-   "source": [
-    "-- COURSES BRONZE DATA QUALITY VALIDATION\n",
-    "\n",
-    "WITH duplicate_course AS (\n",
-    "    -- Identify duplicate course business keys\n",
-    "    SELECT\n",
-    "        code_module,\n",
-    "        code_presentation,\n",
-    "        COUNT(*) AS duplicate_count\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "    GROUP BY\n",
-    "        code_module,\n",
-    "        code_presentation\n",
-    "    HAVING COUNT(*) > 1\n",
-    "),\n",
-    "\n",
-    "duplicate_exact AS (\n",
-    "    -- Identify exact duplicate records\n",
-    "    SELECT\n",
-    "        code_module,\n",
-    "        code_presentation,\n",
-    "        module_presentation_length,\n",
-    "        COUNT(*) AS duplicate_count\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "    GROUP BY\n",
-    "        code_module,\n",
-    "        code_presentation,\n",
-    "        module_presentation_length\n",
-    "    HAVING COUNT(*) > 1\n",
-    "),\n",
-    "\n",
-    "validation_results AS (\n",
-    "\n",
-    "    -- Volume check\n",
-    "    SELECT\n",
-    "        'courses_bronze' AS table_name,\n",
-    "        'Row count' AS check_name,\n",
-    "        'VOLUME' AS dq_category,\n",
-    "        COUNT(*) AS total_rows,\n",
-    "        0 AS failed_rows,\n",
-    "        0.00 AS failure_pct,\n",
-    "        'Table should contain records' AS expected_value,\n",
-    "        CASE\n",
-    "            WHEN COUNT(*) > 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END AS status\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- NULL checks\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Missing code_module',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(code_module IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(code_module IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% missing; mandatory key',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(code_module IS NULL) = 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Missing code_presentation',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(code_presentation IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(code_presentation IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% missing; mandatory key',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(code_presentation IS NULL) = 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Missing module_presentation_length',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(module_presentation_length IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(module_presentation_length IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Length should be populated',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(module_presentation_length IS NULL) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(module_presentation_length IS NULL) * 100.0 / COUNT(*) <= 1\n",
-    "                THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Uniqueness checks\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Duplicate course business key',\n",
-    "        'UNIQUE',\n",
-    "        COUNT(*),\n",
-    "        COALESCE(\n",
-    "            (SELECT SUM(duplicate_count - 1) FROM duplicate_course),\n",
-    "            0\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% duplicate code_module + code_presentation',\n",
-    "        CASE\n",
-    "            WHEN COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),\n",
-    "                0\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Exact duplicate records',\n",
-    "        'UNIQUE',\n",
-    "        COUNT(*),\n",
-    "        COALESCE(\n",
-    "            (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),\n",
-    "            0\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% duplicate records',\n",
-    "        CASE\n",
-    "            WHEN COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),\n",
-    "                0\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COALESCE(\n",
-    "                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Format checks for text fields\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Invalid code_module format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            code_module IS NOT NULL\n",
-    "            AND TRIM(code_module) = ''\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                code_module IS NOT NULL\n",
-    "                AND TRIM(code_module) = ''\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'code_module must contain a value',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                code_module IS NOT NULL\n",
-    "                AND TRIM(code_module) = ''\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                code_module IS NOT NULL\n",
-    "                AND TRIM(code_module) = ''\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Invalid code_presentation format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            code_presentation IS NOT NULL\n",
-    "            AND TRIM(code_presentation) = ''\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                code_presentation IS NOT NULL\n",
-    "                AND TRIM(code_presentation) = ''\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'code_presentation must contain a value',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                code_presentation IS NOT NULL\n",
-    "                AND TRIM(code_presentation) = ''\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                code_presentation IS NOT NULL\n",
-    "                AND TRIM(code_presentation) = ''\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Range check\n",
-    "    SELECT\n",
-    "        'courses_bronze',\n",
-    "        'Invalid module_presentation_length range',\n",
-    "        'RANGE',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            module_presentation_length IS NOT NULL\n",
-    "            AND module_presentation_length <= 0\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                module_presentation_length IS NOT NULL\n",
-    "                AND module_presentation_length <= 0\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'module_presentation_length must be greater than 0',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                module_presentation_length IS NOT NULL\n",
-    "                AND module_presentation_length <= 0\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                module_presentation_length IS NOT NULL\n",
-    "                AND module_presentation_length <= 0\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.courses_bronze\n",
-    ")\n",
-    "\n",
-    "SELECT\n",
-    "    table_name,\n",
-    "    check_name,\n",
-    "    dq_category,\n",
-    "    total_rows,\n",
-    "    failed_rows,\n",
-    "    failure_pct,\n",
-    "    expected_value,\n",
-    "    status\n",
-    "FROM validation_results\n",
-    "ORDER BY\n",
-    "    CASE dq_category\n",
-    "        WHEN 'VOLUME' THEN 1\n",
-    "        WHEN 'NULL' THEN 2\n",
-    "        WHEN 'UNIQUE' THEN 3\n",
-    "        WHEN 'TYPE / FORMAT' THEN 4\n",
-    "        WHEN 'RANGE' THEN 5\n",
-    "        ELSE 6\n",
-    "    END,\n",
-    "    check_name;"
-   ]
-  }
- ],
- "metadata": {
-  "application/vnd.databricks.v1+notebook": {
-   "computePreferences": null,
-   "dashboards": [],
-   "environmentMetadata": null,
-   "inputWidgetPreferences": null,
-   "language": "sql",
-   "notebookMetadata": {
-    "pythonIndentUnit": 4,
-    "sqlQueryOptions": {
-     "applyAutoLimit": true,
-     "catalog": "workspace",
-     "metastore": null,
-     "schema": "default"
-    }
-   },
-   "notebookName": "check_courses_bronze.sql.dbquery.ipynb",
-   "widgets": {}
-  },
-  "language_info": {
-   "name": "sql"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 0
-}
+-- COURSES BRONZE DATA QUALITY VALIDATION
+
+WITH duplicate_course AS (
+    -- Identify duplicate course business keys
+    SELECT
+        code_module,
+        code_presentation,
+        COUNT(*) AS duplicate_count
+    FROM oulad.oulad_bronze.courses_bronze
+    GROUP BY
+        code_module,
+        code_presentation
+    HAVING COUNT(*) > 1
+),
+
+duplicate_exact AS (
+    -- Identify exact duplicate records
+    SELECT
+        code_module,
+        code_presentation,
+        module_presentation_length,
+        COUNT(*) AS duplicate_count
+    FROM oulad.oulad_bronze.courses_bronze
+    GROUP BY
+        code_module,
+        code_presentation,
+        module_presentation_length
+    HAVING COUNT(*) > 1
+),
+
+validation_results AS (
+
+    -- Volume check
+    SELECT
+        'courses_bronze' AS table_name,
+        'Row count' AS check_name,
+        'VOLUME' AS dq_category,
+        COUNT(*) AS total_rows,
+        0 AS failed_rows,
+        0.00 AS failure_pct,
+        'Table should contain records' AS expected_value,
+        CASE
+            WHEN COUNT(*) > 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END AS status
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    -- NULL checks
+    SELECT
+        'courses_bronze',
+        'Missing code_module',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(code_module IS NULL),
+        ROUND(
+            COUNT_IF(code_module IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% missing; mandatory key',
+        CASE
+            WHEN COUNT_IF(code_module IS NULL) = 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    SELECT
+        'courses_bronze',
+        'Missing code_presentation',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(code_presentation IS NULL),
+        ROUND(
+            COUNT_IF(code_presentation IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% missing; mandatory key',
+        CASE
+            WHEN COUNT_IF(code_presentation IS NULL) = 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    SELECT
+        'courses_bronze',
+        'Missing module_presentation_length',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(module_presentation_length IS NULL),
+        ROUND(
+            COUNT_IF(module_presentation_length IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        'Length should be populated',
+        CASE
+            WHEN COUNT_IF(module_presentation_length IS NULL) = 0 THEN 'PASS'
+            WHEN COUNT_IF(module_presentation_length IS NULL) * 100.0 / COUNT(*) <= 1
+                THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    -- Uniqueness checks
+    SELECT
+        'courses_bronze',
+        'Duplicate course business key',
+        'UNIQUE',
+        COUNT(*),
+        COALESCE(
+            (SELECT SUM(duplicate_count - 1) FROM duplicate_course),
+            0
+        ),
+        ROUND(
+            COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),
+                0
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% duplicate code_module + code_presentation',
+        CASE
+            WHEN COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),
+                0
+            ) = 0 THEN 'PASS'
+            WHEN COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_course),
+                0
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    SELECT
+        'courses_bronze',
+        'Exact duplicate records',
+        'UNIQUE',
+        COUNT(*),
+        COALESCE(
+            (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),
+            0
+        ),
+        ROUND(
+            COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),
+                0
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% duplicate records',
+        CASE
+            WHEN COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),
+                0
+            ) = 0 THEN 'PASS'
+            WHEN COALESCE(
+                (SELECT SUM(duplicate_count - 1) FROM duplicate_exact),
+                0
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    -- Format checks for text fields
+    SELECT
+        'courses_bronze',
+        'Invalid code_module format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            code_module IS NOT NULL
+            AND TRIM(code_module) = ''
+        ),
+        ROUND(
+            COUNT_IF(
+                code_module IS NOT NULL
+                AND TRIM(code_module) = ''
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'code_module must contain a value',
+        CASE
+            WHEN COUNT_IF(
+                code_module IS NOT NULL
+                AND TRIM(code_module) = ''
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                code_module IS NOT NULL
+                AND TRIM(code_module) = ''
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    SELECT
+        'courses_bronze',
+        'Invalid code_presentation format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            code_presentation IS NOT NULL
+            AND TRIM(code_presentation) = ''
+        ),
+        ROUND(
+            COUNT_IF(
+                code_presentation IS NOT NULL
+                AND TRIM(code_presentation) = ''
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'code_presentation must contain a value',
+        CASE
+            WHEN COUNT_IF(
+                code_presentation IS NOT NULL
+                AND TRIM(code_presentation) = ''
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                code_presentation IS NOT NULL
+                AND TRIM(code_presentation) = ''
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+
+    UNION ALL
+
+    -- Range check
+    SELECT
+        'courses_bronze',
+        'Invalid module_presentation_length range',
+        'RANGE',
+        COUNT(*),
+        COUNT_IF(
+            module_presentation_length IS NOT NULL
+            AND module_presentation_length <= 0
+        ),
+        ROUND(
+            COUNT_IF(
+                module_presentation_length IS NOT NULL
+                AND module_presentation_length <= 0
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'module_presentation_length must be greater than 0',
+        CASE
+            WHEN COUNT_IF(
+                module_presentation_length IS NOT NULL
+                AND module_presentation_length <= 0
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                module_presentation_length IS NOT NULL
+                AND module_presentation_length <= 0
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.courses_bronze
+)
+
+SELECT
+    table_name,
+    check_name,
+    dq_category,
+    total_rows,
+    failed_rows,
+    failure_pct,
+    expected_value,
+    status
+FROM validation_results
+ORDER BY
+    CASE dq_category
+        WHEN 'VOLUME' THEN 1
+        WHEN 'NULL' THEN 2
+        WHEN 'UNIQUE' THEN 3
+        WHEN 'TYPE / FORMAT' THEN 4
+        WHEN 'RANGE' THEN 5
+        ELSE 6
+    END,
+    check_name;

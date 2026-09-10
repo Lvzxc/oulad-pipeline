@@ -1,628 +1,579 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 0,
-   "metadata": {
-    "application/vnd.databricks.v1+cell": {
-     "cellMetadata": {
-      "byteLimit": 104857600,
-      "rowLimit": 1000
-     },
-     "inputWidgets": {},
-     "nuid": "1fbdda92-1319-40c3-8ee5-552c3a663b6d",
-     "showTitle": false,
-     "tableResultSettingsMap": {},
-     "title": ""
-    }
-   },
-   "outputs": [],
-   "source": [
-    "-- STUDENT ASSESSMENT BRONZE DATA QUALITY VALIDATION\n",
-    "\n",
-    "WITH duplicate_student_assessment AS (\n",
-    "    -- Duplicate student-assessment business key\n",
-    "    SELECT\n",
-    "        id_assessment,\n",
-    "        id_student,\n",
-    "        COUNT(*) AS duplicate_count\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "    GROUP BY\n",
-    "        id_assessment,\n",
-    "        id_student\n",
-    "    HAVING COUNT(*) > 1\n",
-    "),\n",
-    "\n",
-    "duplicate_exact AS (\n",
-    "    -- Exact duplicate records\n",
-    "    SELECT\n",
-    "        id_assessment,\n",
-    "        id_student,\n",
-    "        date_submitted,\n",
-    "        is_banked,\n",
-    "        score,\n",
-    "        COUNT(*) AS duplicate_count\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "    GROUP BY\n",
-    "        id_assessment,\n",
-    "        id_student,\n",
-    "        date_submitted,\n",
-    "        is_banked,\n",
-    "        score\n",
-    "    HAVING COUNT(*) > 1\n",
-    "),\n",
-    "\n",
-    "assessment_keys AS (\n",
-    "    -- Distinct assessment identifiers for referential integrity\n",
-    "    SELECT DISTINCT\n",
-    "        TRY_CAST(id_assessment AS BIGINT) AS id_assessment\n",
-    "    FROM oulad.oulad_bronze.assessment_bronze\n",
-    "    WHERE TRY_CAST(id_assessment AS BIGINT) IS NOT NULL\n",
-    "),\n",
-    "\n",
-    "student_keys AS (\n",
-    "    -- Distinct student identifiers for referential integrity\n",
-    "    SELECT DISTINCT\n",
-    "        TRY_CAST(id_student AS BIGINT) AS id_student\n",
-    "    FROM oulad.oulad_bronze.student_info_bronze\n",
-    "    WHERE TRY_CAST(id_student AS BIGINT) IS NOT NULL\n",
-    "),\n",
-    "\n",
-    "validation_results AS (\n",
-    "\n",
-    "    -- Volume check\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze' AS table_name,\n",
-    "        'Row count' AS check_name,\n",
-    "        'VOLUME' AS dq_category,\n",
-    "        COUNT(*) AS total_rows,\n",
-    "        0 AS failed_rows,\n",
-    "        0.00 AS failure_pct,\n",
-    "        'Table should contain records' AS expected_value,\n",
-    "        CASE\n",
-    "            WHEN COUNT(*) > 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END AS status\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- NULL checks\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Missing id_assessment',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(id_assessment IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(id_assessment IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% missing; mandatory key',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(id_assessment IS NULL) = 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Missing id_student',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(id_student IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(id_student IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% missing; mandatory key',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(id_student IS NULL) = 0 THEN 'PASS'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Missing date_submitted',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(date_submitted IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(date_submitted IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Submission date should normally be populated',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(date_submitted IS NULL) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(date_submitted IS NULL) * 100.0 / COUNT(*) <= 1\n",
-    "                THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Missing is_banked',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(is_banked IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(is_banked IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'is_banked should be populated',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(is_banked IS NULL) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(is_banked IS NULL) * 100.0 / COUNT(*) <= 1\n",
-    "                THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Missing score',\n",
-    "        'NULL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(score IS NULL),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(score IS NULL) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Score should normally be populated',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(score IS NULL) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(score IS NULL) * 100.0 / COUNT(*) <= 1\n",
-    "                THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Uniqueness checks\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Duplicate student-assessment business key',\n",
-    "        'UNIQUE',\n",
-    "        COUNT(*),\n",
-    "        COALESCE(\n",
-    "            (\n",
-    "                SELECT SUM(duplicate_count - 1)\n",
-    "                FROM duplicate_student_assessment\n",
-    "            ),\n",
-    "            0\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_student_assessment\n",
-    "                ),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% duplicate id_assessment + id_student',\n",
-    "        CASE\n",
-    "            WHEN COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_student_assessment\n",
-    "                ),\n",
-    "                0\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_student_assessment\n",
-    "                ),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Exact duplicate records',\n",
-    "        'UNIQUE',\n",
-    "        COUNT(*),\n",
-    "        COALESCE(\n",
-    "            (\n",
-    "                SELECT SUM(duplicate_count - 1)\n",
-    "                FROM duplicate_exact\n",
-    "            ),\n",
-    "            0\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_exact\n",
-    "                ),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0% duplicate records',\n",
-    "        CASE\n",
-    "            WHEN COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_exact\n",
-    "                ),\n",
-    "                0\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COALESCE(\n",
-    "                (\n",
-    "                    SELECT SUM(duplicate_count - 1)\n",
-    "                    FROM duplicate_exact\n",
-    "                ),\n",
-    "                0\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Type and format checks\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Invalid id_assessment format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            id_assessment IS NOT NULL\n",
-    "            AND TRY_CAST(id_assessment AS BIGINT) IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                id_assessment IS NOT NULL\n",
-    "                AND TRY_CAST(id_assessment AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'id_assessment must be numeric',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                id_assessment IS NOT NULL\n",
-    "                AND TRY_CAST(id_assessment AS BIGINT) IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                id_assessment IS NOT NULL\n",
-    "                AND TRY_CAST(id_assessment AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Invalid id_student format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            id_student IS NOT NULL\n",
-    "            AND TRY_CAST(id_student AS BIGINT) IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                id_student IS NOT NULL\n",
-    "                AND TRY_CAST(id_student AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'id_student must be numeric',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                id_student IS NOT NULL\n",
-    "                AND TRY_CAST(id_student AS BIGINT) IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                id_student IS NOT NULL\n",
-    "                AND TRY_CAST(id_student AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Invalid date_submitted format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            date_submitted IS NOT NULL\n",
-    "            AND TRY_CAST(date_submitted AS BIGINT) IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                date_submitted IS NOT NULL\n",
-    "                AND TRY_CAST(date_submitted AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'date_submitted must be numeric',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                date_submitted IS NOT NULL\n",
-    "                AND TRY_CAST(date_submitted AS BIGINT) IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                date_submitted IS NOT NULL\n",
-    "                AND TRY_CAST(date_submitted AS BIGINT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Invalid is_banked format',\n",
-    "        'TYPE / FORMAT',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            is_banked IS NOT NULL\n",
-    "            AND TRY_CAST(is_banked AS INT) IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                is_banked IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'is_banked must be numeric',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                is_banked IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                is_banked IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Source sentinel check\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Source sentinel (?) in score',\n",
-    "        'SENTINEL',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(score = '?'),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(score = '?') * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Source may use ? for unavailable score',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(score = '?') = 0 THEN 'PASS'\n",
-    "            ELSE 'WARN'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Score range check\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Score outside valid range',\n",
-    "        'RANGE',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            TRY_CAST(score AS DOUBLE) IS NOT NULL\n",
-    "            AND (\n",
-    "                TRY_CAST(score AS DOUBLE) < 0\n",
-    "                OR TRY_CAST(score AS DOUBLE) > 100\n",
-    "            )\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                TRY_CAST(score AS DOUBLE) IS NOT NULL\n",
-    "                AND (\n",
-    "                    TRY_CAST(score AS DOUBLE) < 0\n",
-    "                    OR TRY_CAST(score AS DOUBLE) > 100\n",
-    "                )\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        '0 <= score <= 100',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                TRY_CAST(score AS DOUBLE) IS NOT NULL\n",
-    "                AND (\n",
-    "                    TRY_CAST(score AS DOUBLE) < 0\n",
-    "                    OR TRY_CAST(score AS DOUBLE) > 100\n",
-    "                )\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                TRY_CAST(score AS DOUBLE) IS NOT NULL\n",
-    "                AND (\n",
-    "                    TRY_CAST(score AS DOUBLE) < 0\n",
-    "                    OR TRY_CAST(score AS DOUBLE) > 100\n",
-    "                )\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Accepted value check\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Invalid is_banked value',\n",
-    "        'ACCEPTED VALUE',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            TRY_CAST(is_banked AS INT) IS NOT NULL\n",
-    "            AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                TRY_CAST(is_banked AS INT) IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'is_banked must be 0 or 1',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                TRY_CAST(is_banked AS INT) IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                TRY_CAST(is_banked AS INT) IS NOT NULL\n",
-    "                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)\n",
-    "            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Foreign key check to assessments\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Assessment without matching assessment definition',\n",
-    "        'FOREIGN KEY',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            sa.id_assessment IS NOT NULL\n",
-    "            AND ak.id_assessment IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                sa.id_assessment IS NOT NULL\n",
-    "                AND ak.id_assessment IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Every id_assessment should exist in assessment_bronze',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                sa.id_assessment IS NOT NULL\n",
-    "                AND ak.id_assessment IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                sa.id_assessment IS NOT NULL\n",
-    "                AND ak.id_assessment IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 0.1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze sa\n",
-    "    LEFT JOIN assessment_keys ak\n",
-    "        ON TRY_CAST(sa.id_assessment AS BIGINT) = ak.id_assessment\n",
-    "\n",
-    "    UNION ALL\n",
-    "\n",
-    "    -- Foreign key check to student information\n",
-    "    SELECT\n",
-    "        'student_assessment_bronze',\n",
-    "        'Assessment without matching student',\n",
-    "        'FOREIGN KEY',\n",
-    "        COUNT(*),\n",
-    "        COUNT_IF(\n",
-    "            sa.id_student IS NOT NULL\n",
-    "            AND sk.id_student IS NULL\n",
-    "        ),\n",
-    "        ROUND(\n",
-    "            COUNT_IF(\n",
-    "                sa.id_student IS NOT NULL\n",
-    "                AND sk.id_student IS NULL\n",
-    "            ) * 100.0 / COUNT(*),\n",
-    "            2\n",
-    "        ),\n",
-    "        'Every id_student should exist in student_info_bronze',\n",
-    "        CASE\n",
-    "            WHEN COUNT_IF(\n",
-    "                sa.id_student IS NOT NULL\n",
-    "                AND sk.id_student IS NULL\n",
-    "            ) = 0 THEN 'PASS'\n",
-    "            WHEN COUNT_IF(\n",
-    "                sa.id_student IS NOT NULL\n",
-    "                AND sk.id_student IS NULL\n",
-    "            ) * 100.0 / COUNT(*) <= 0.1 THEN 'WARN'\n",
-    "            ELSE 'FAIL'\n",
-    "        END\n",
-    "    FROM oulad.oulad_bronze.student_assessment_bronze sa\n",
-    "    LEFT JOIN student_keys sk\n",
-    "        ON TRY_CAST(sa.id_student AS BIGINT) = sk.id_student\n",
-    ")\n",
-    "\n",
-    "SELECT\n",
-    "    table_name,\n",
-    "    check_name,\n",
-    "    dq_category,\n",
-    "    total_rows,\n",
-    "    failed_rows,\n",
-    "    failure_pct,\n",
-    "    expected_value,\n",
-    "    status\n",
-    "FROM validation_results\n",
-    "ORDER BY\n",
-    "    CASE dq_category\n",
-    "        WHEN 'VOLUME' THEN 1\n",
-    "        WHEN 'NULL' THEN 2\n",
-    "        WHEN 'UNIQUE' THEN 3\n",
-    "        WHEN 'TYPE / FORMAT' THEN 4\n",
-    "        WHEN 'SENTINEL' THEN 5\n",
-    "        WHEN 'RANGE' THEN 6\n",
-    "        WHEN 'ACCEPTED VALUE' THEN 7\n",
-    "        WHEN 'FOREIGN KEY' THEN 8\n",
-    "        ELSE 9\n",
-    "    END,\n",
-    "    check_name;"
-   ]
-  }
- ],
- "metadata": {
-  "application/vnd.databricks.v1+notebook": {
-   "computePreferences": null,
-   "dashboards": [],
-   "environmentMetadata": null,
-   "inputWidgetPreferences": null,
-   "language": "sql",
-   "notebookMetadata": {
-    "pythonIndentUnit": 4,
-    "sqlQueryOptions": {
-     "applyAutoLimit": true,
-     "catalog": "workspace",
-     "metastore": null,
-     "schema": "default"
-    }
-   },
-   "notebookName": "check_student_assessment_bronze.sql.dbquery.ipynb",
-   "widgets": {}
-  },
-  "language_info": {
-   "name": "sql"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 0
-}
+-- STUDENT ASSESSMENT BRONZE DATA QUALITY VALIDATION
+
+WITH duplicate_student_assessment AS (
+    -- Duplicate student-assessment business key
+    SELECT
+        id_assessment,
+        id_student,
+        COUNT(*) AS duplicate_count
+    FROM oulad.oulad_bronze.student_assessment_bronze
+    GROUP BY
+        id_assessment,
+        id_student
+    HAVING COUNT(*) > 1
+),
+
+duplicate_exact AS (
+    -- Exact duplicate records
+    SELECT
+        id_assessment,
+        id_student,
+        date_submitted,
+        is_banked,
+        score,
+        COUNT(*) AS duplicate_count
+    FROM oulad.oulad_bronze.student_assessment_bronze
+    GROUP BY
+        id_assessment,
+        id_student,
+        date_submitted,
+        is_banked,
+        score
+    HAVING COUNT(*) > 1
+),
+
+assessment_keys AS (
+    -- Distinct assessment identifiers for referential integrity
+    SELECT DISTINCT
+        TRY_CAST(id_assessment AS BIGINT) AS id_assessment
+    FROM oulad.oulad_bronze.assessment_bronze
+    WHERE TRY_CAST(id_assessment AS BIGINT) IS NOT NULL
+),
+
+student_keys AS (
+    -- Distinct student identifiers for referential integrity
+    SELECT DISTINCT
+        TRY_CAST(id_student AS BIGINT) AS id_student
+    FROM oulad.oulad_bronze.student_info_bronze
+    WHERE TRY_CAST(id_student AS BIGINT) IS NOT NULL
+),
+
+validation_results AS (
+
+    -- Volume check
+    SELECT
+        'student_assessment_bronze' AS table_name,
+        'Row count' AS check_name,
+        'VOLUME' AS dq_category,
+        COUNT(*) AS total_rows,
+        0 AS failed_rows,
+        0.00 AS failure_pct,
+        'Table should contain records' AS expected_value,
+        CASE
+            WHEN COUNT(*) > 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END AS status
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- NULL checks
+    SELECT
+        'student_assessment_bronze',
+        'Missing id_assessment',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(id_assessment IS NULL),
+        ROUND(
+            COUNT_IF(id_assessment IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% missing; mandatory key',
+        CASE
+            WHEN COUNT_IF(id_assessment IS NULL) = 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Missing id_student',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(id_student IS NULL),
+        ROUND(
+            COUNT_IF(id_student IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% missing; mandatory key',
+        CASE
+            WHEN COUNT_IF(id_student IS NULL) = 0 THEN 'PASS'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Missing date_submitted',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(date_submitted IS NULL),
+        ROUND(
+            COUNT_IF(date_submitted IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        'Submission date should normally be populated',
+        CASE
+            WHEN COUNT_IF(date_submitted IS NULL) = 0 THEN 'PASS'
+            WHEN COUNT_IF(date_submitted IS NULL) * 100.0 / COUNT(*) <= 1
+                THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Missing is_banked',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(is_banked IS NULL),
+        ROUND(
+            COUNT_IF(is_banked IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        'is_banked should be populated',
+        CASE
+            WHEN COUNT_IF(is_banked IS NULL) = 0 THEN 'PASS'
+            WHEN COUNT_IF(is_banked IS NULL) * 100.0 / COUNT(*) <= 1
+                THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Missing score',
+        'NULL',
+        COUNT(*),
+        COUNT_IF(score IS NULL),
+        ROUND(
+            COUNT_IF(score IS NULL) * 100.0 / COUNT(*),
+            2
+        ),
+        'Score should normally be populated',
+        CASE
+            WHEN COUNT_IF(score IS NULL) = 0 THEN 'PASS'
+            WHEN COUNT_IF(score IS NULL) * 100.0 / COUNT(*) <= 1
+                THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Uniqueness checks
+    SELECT
+        'student_assessment_bronze',
+        'Duplicate student-assessment business key',
+        'UNIQUE',
+        COUNT(*),
+        COALESCE(
+            (
+                SELECT SUM(duplicate_count - 1)
+                FROM duplicate_student_assessment
+            ),
+            0
+        ),
+        ROUND(
+            COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_student_assessment
+                ),
+                0
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% duplicate id_assessment + id_student',
+        CASE
+            WHEN COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_student_assessment
+                ),
+                0
+            ) = 0 THEN 'PASS'
+            WHEN COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_student_assessment
+                ),
+                0
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Exact duplicate records',
+        'UNIQUE',
+        COUNT(*),
+        COALESCE(
+            (
+                SELECT SUM(duplicate_count - 1)
+                FROM duplicate_exact
+            ),
+            0
+        ),
+        ROUND(
+            COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_exact
+                ),
+                0
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        '0% duplicate records',
+        CASE
+            WHEN COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_exact
+                ),
+                0
+            ) = 0 THEN 'PASS'
+            WHEN COALESCE(
+                (
+                    SELECT SUM(duplicate_count - 1)
+                    FROM duplicate_exact
+                ),
+                0
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Type and format checks
+    SELECT
+        'student_assessment_bronze',
+        'Invalid id_assessment format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            id_assessment IS NOT NULL
+            AND TRY_CAST(id_assessment AS BIGINT) IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                id_assessment IS NOT NULL
+                AND TRY_CAST(id_assessment AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'id_assessment must be numeric',
+        CASE
+            WHEN COUNT_IF(
+                id_assessment IS NOT NULL
+                AND TRY_CAST(id_assessment AS BIGINT) IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                id_assessment IS NOT NULL
+                AND TRY_CAST(id_assessment AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Invalid id_student format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            id_student IS NOT NULL
+            AND TRY_CAST(id_student AS BIGINT) IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                id_student IS NOT NULL
+                AND TRY_CAST(id_student AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'id_student must be numeric',
+        CASE
+            WHEN COUNT_IF(
+                id_student IS NOT NULL
+                AND TRY_CAST(id_student AS BIGINT) IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                id_student IS NOT NULL
+                AND TRY_CAST(id_student AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Invalid date_submitted format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            date_submitted IS NOT NULL
+            AND TRY_CAST(date_submitted AS BIGINT) IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                date_submitted IS NOT NULL
+                AND TRY_CAST(date_submitted AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'date_submitted must be numeric',
+        CASE
+            WHEN COUNT_IF(
+                date_submitted IS NOT NULL
+                AND TRY_CAST(date_submitted AS BIGINT) IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                date_submitted IS NOT NULL
+                AND TRY_CAST(date_submitted AS BIGINT) IS NULL
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    SELECT
+        'student_assessment_bronze',
+        'Invalid is_banked format',
+        'TYPE / FORMAT',
+        COUNT(*),
+        COUNT_IF(
+            is_banked IS NOT NULL
+            AND TRY_CAST(is_banked AS INT) IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                is_banked IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'is_banked must be numeric',
+        CASE
+            WHEN COUNT_IF(
+                is_banked IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                is_banked IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) IS NULL
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Source sentinel check
+    SELECT
+        'student_assessment_bronze',
+        'Source sentinel (?) in score',
+        'SENTINEL',
+        COUNT(*),
+        COUNT_IF(score = '?'),
+        ROUND(
+            COUNT_IF(score = '?') * 100.0 / COUNT(*),
+            2
+        ),
+        'Source may use ? for unavailable score',
+        CASE
+            WHEN COUNT_IF(score = '?') = 0 THEN 'PASS'
+            ELSE 'WARN'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Score range check
+    SELECT
+        'student_assessment_bronze',
+        'Score outside valid range',
+        'RANGE',
+        COUNT(*),
+        COUNT_IF(
+            TRY_CAST(score AS DOUBLE) IS NOT NULL
+            AND (
+                TRY_CAST(score AS DOUBLE) < 0
+                OR TRY_CAST(score AS DOUBLE) > 100
+            )
+        ),
+        ROUND(
+            COUNT_IF(
+                TRY_CAST(score AS DOUBLE) IS NOT NULL
+                AND (
+                    TRY_CAST(score AS DOUBLE) < 0
+                    OR TRY_CAST(score AS DOUBLE) > 100
+                )
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        '0 <= score <= 100',
+        CASE
+            WHEN COUNT_IF(
+                TRY_CAST(score AS DOUBLE) IS NOT NULL
+                AND (
+                    TRY_CAST(score AS DOUBLE) < 0
+                    OR TRY_CAST(score AS DOUBLE) > 100
+                )
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                TRY_CAST(score AS DOUBLE) IS NOT NULL
+                AND (
+                    TRY_CAST(score AS DOUBLE) < 0
+                    OR TRY_CAST(score AS DOUBLE) > 100
+                )
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Accepted value check
+    SELECT
+        'student_assessment_bronze',
+        'Invalid is_banked value',
+        'ACCEPTED VALUE',
+        COUNT(*),
+        COUNT_IF(
+            TRY_CAST(is_banked AS INT) IS NOT NULL
+            AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)
+        ),
+        ROUND(
+            COUNT_IF(
+                TRY_CAST(is_banked AS INT) IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'is_banked must be 0 or 1',
+        CASE
+            WHEN COUNT_IF(
+                TRY_CAST(is_banked AS INT) IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                TRY_CAST(is_banked AS INT) IS NOT NULL
+                AND TRY_CAST(is_banked AS INT) NOT IN (0, 1)
+            ) * 100.0 / COUNT(*) <= 1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze
+
+    UNION ALL
+
+    -- Foreign key check to assessments
+    SELECT
+        'student_assessment_bronze',
+        'Assessment without matching assessment definition',
+        'FOREIGN KEY',
+        COUNT(*),
+        COUNT_IF(
+            sa.id_assessment IS NOT NULL
+            AND ak.id_assessment IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                sa.id_assessment IS NOT NULL
+                AND ak.id_assessment IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'Every id_assessment should exist in assessment_bronze',
+        CASE
+            WHEN COUNT_IF(
+                sa.id_assessment IS NOT NULL
+                AND ak.id_assessment IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                sa.id_assessment IS NOT NULL
+                AND ak.id_assessment IS NULL
+            ) * 100.0 / COUNT(*) <= 0.1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze sa
+    LEFT JOIN assessment_keys ak
+        ON TRY_CAST(sa.id_assessment AS BIGINT) = ak.id_assessment
+
+    UNION ALL
+
+    -- Foreign key check to student information
+    SELECT
+        'student_assessment_bronze',
+        'Assessment without matching student',
+        'FOREIGN KEY',
+        COUNT(*),
+        COUNT_IF(
+            sa.id_student IS NOT NULL
+            AND sk.id_student IS NULL
+        ),
+        ROUND(
+            COUNT_IF(
+                sa.id_student IS NOT NULL
+                AND sk.id_student IS NULL
+            ) * 100.0 / COUNT(*),
+            2
+        ),
+        'Every id_student should exist in student_info_bronze',
+        CASE
+            WHEN COUNT_IF(
+                sa.id_student IS NOT NULL
+                AND sk.id_student IS NULL
+            ) = 0 THEN 'PASS'
+            WHEN COUNT_IF(
+                sa.id_student IS NOT NULL
+                AND sk.id_student IS NULL
+            ) * 100.0 / COUNT(*) <= 0.1 THEN 'WARN'
+            ELSE 'FAIL'
+        END
+    FROM oulad.oulad_bronze.student_assessment_bronze sa
+    LEFT JOIN student_keys sk
+        ON TRY_CAST(sa.id_student AS BIGINT) = sk.id_student
+)
+
+SELECT
+    table_name,
+    check_name,
+    dq_category,
+    total_rows,
+    failed_rows,
+    failure_pct,
+    expected_value,
+    status
+FROM validation_results
+ORDER BY
+    CASE dq_category
+        WHEN 'VOLUME' THEN 1
+        WHEN 'NULL' THEN 2
+        WHEN 'UNIQUE' THEN 3
+        WHEN 'TYPE / FORMAT' THEN 4
+        WHEN 'SENTINEL' THEN 5
+        WHEN 'RANGE' THEN 6
+        WHEN 'ACCEPTED VALUE' THEN 7
+        WHEN 'FOREIGN KEY' THEN 8
+        ELSE 9
+    END,
+    check_name;
