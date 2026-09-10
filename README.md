@@ -63,15 +63,21 @@ Each layer has one responsibility. Preview queries and validation logic are kept
 ## Gold data model
 
 The Gold layer uses a star schema centered on
-<img width="1125" height="631" alt="image" src="https://github.com/user-attachments/assets/641fe6df-cbc4-48d0-aaed-a40b21728e32" />
+<img width="811" height="571" alt="image" src="https://github.com/user-attachments/assets/923a548e-2204-48dd-bc1e-31f64545dc76" />
+
 
 --Insert pipeline architecture here
 
 ### Fact table
-Grain:
-Columns Included:
+1. fact_assessment
+Grain: One row per student–course–assessment–date.
+Meaning: Each record represents a student’s submission of a specific assessment in a course on a given date.
+Columns Included: student_key, course_key, assessment_key, date_key, score, is_banked
 
-The fact table uses ---- as its business key
+2. fact_vle_interaction
+Grain: One row per student–course–site–date.
+Meaning: Each record represents the total clicks a student made on a specific VLE site (learning activity) in a course on a given date.
+Columns Included: student_key, course_key, site_key, date_key, sum_click
 
 ### Dimension tables
 | Dimension        | Grain | Key Fields | Attributes | Lineage |
