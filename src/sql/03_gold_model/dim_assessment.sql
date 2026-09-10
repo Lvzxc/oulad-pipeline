@@ -3,57 +3,46 @@ CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
     -- Surrogate primary key
     assessment_key BIGINT GENERATED ALWAYS AS IDENTITY,
 
-    -- Natural/business key columns (kept as columns, not the primary key)
+    -- Natural/business key columns
     id_assessment BIGINT,
-    code_module STRING,
-    code_presentation STRING,
+    course_key BIGINT NOT NULL,         
 
     -- Assessment attributes
     assessment_type STRING,
-    assessment_date INT,   -- relative-day offset; NULL for some Exam rows (due date unknown at source)
+    assessment_date INT,
     weight INT,
 
-    -- Original Silver processing timestamp and date
-    -- Used for data lineage and identifying the latest record
+    -- Lineage
     silver_processed_timestamp TIMESTAMP,
     silver_processed_date DATE,
-
-    -- Timestamp and date when the record was processed into Gold
-    gold_processed_timestamp TIMESTAMP,
-    gold_processed_date DATE,
-
-    PRIMARY KEY (assessment_key)
 );
-
 
 -- Prepare cleaned Silver records for Gold
 CREATE OR REPLACE TEMP VIEW dim_assessment_ready AS
-
 SELECT
-    id_assessment,
-    code_module,
-    code_presentation,
-    assessment_type,
-    CAST(date AS INT) AS assessment_date,
-    CAST(weight AS INT) AS weight,
-    silver_processed_timestamp,
-    silver_processed_date
+    a.id_assessment,
+    dc.course_key,                        
+    a.code_module,
+    a.code_presentation,
+    a.assessment_type,
+    CAST(a.date AS INT) AS assessment_date,
+    CAST(a.weight AS INT) AS weight,
+    a.silver_processed_timestamp,
+    a.silver_processed_date
+FROM oulad.oulad_silver.assessment_silver a
+JOIN oulad.oulad_gold.dim_course dc
+    ON a.code_module = dc.code_module
+    AND a.code_presentation = dc.code_presentation;
 
-FROM oulad.oulad_silver.assessment_silver;
-
-
--- Merge the prepared records into the Gold dimension table
+-- Merge into Gold
 MERGE INTO oulad.oulad_gold.dim_assessment AS target
-
 USING dim_assessment_ready AS source
-
--- Match on the natural business key
 ON target.id_assessment = source.id_assessment
 AND target.code_module = source.code_module
 AND target.code_presentation = source.code_presentation
-
 WHEN MATCHED THEN
     UPDATE SET
+        target.course_key = source.course_key,       
         target.assessment_type = source.assessment_type,
         target.assessment_date = source.assessment_date,
         target.weight = source.weight,
@@ -61,12 +50,10 @@ WHEN MATCHED THEN
         target.silver_processed_date = source.silver_processed_date,
         target.gold_processed_timestamp = current_timestamp(),
         target.gold_processed_date = current_date()
-
--- assessment_key is intentionally left out of the INSERT list —
--- IDENTITY auto-generates it for every new row
 WHEN NOT MATCHED THEN
     INSERT (
         id_assessment,
+        course_key,                                
         code_module,
         code_presentation,
         assessment_type,
@@ -79,6 +66,7 @@ WHEN NOT MATCHED THEN
     )
     VALUES (
         source.id_assessment,
+        source.course_key,
         source.code_module,
         source.code_presentation,
         source.assessment_type,
