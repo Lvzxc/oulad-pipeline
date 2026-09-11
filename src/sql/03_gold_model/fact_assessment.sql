@@ -28,7 +28,7 @@ USING (
         AND da.code_module = ds.code_module
         AND da.code_presentation = ds.code_presentation
     JOIN oulad.oulad_gold.dim_date dd
-        ON sa.date_submitted = dd.date_key
+        ON sa.date_submitted = dd.relative_day
 ) AS src
 ON tgt.student_key = src.student_key
    AND tgt.course_key = src.course_key
