@@ -1,10 +1,9 @@
 -- BUSINESS QUESTION:
--- How does student activity change throughout a course, broken down
--- by VLE activity type (resource, oucontent, forumng, quiz, etc.)?
+-- How does student activity change throughout a course, REGARDLESS
+-- of course duration?
 -- Activity = VLE clicks (sum_click)
--- Course progress = percentage through the course, based on relative_day
--- Grain = one row per student per course per week per activity type,
--- keeping full week-level detail per course-presentation
+-- Course progress = percentage through the course (0-100%), binned
+-- into deciles so every course-presentation contributes to every bin.
 
 WITH course_length AS (
     SELECT
@@ -15,51 +14,52 @@ WITH course_length AS (
     FROM oulad.oulad_gold.dim_course
 ),
 
-student_weekly_activity AS (
+student_daily_activity AS (
     SELECT
         f.student_key,
         f.course_key,
-        dv.activity_type,          -- What kind of VLE resource was interacted with
         dd.relative_day,
-        dd.relative_week,
         f.sum_click
     FROM oulad.oulad_gold.fact_vle_interaction f
-    JOIN oulad.oulad_gold.dim_vle dv
-        ON f.site_key = dv.site_key
     JOIN oulad.oulad_gold.dim_date dd
         ON f.date_key = dd.date_key
 ),
 
-activity_in_course AS (
+activity_with_progress AS (
     SELECT
-        swa.student_key,
+        sda.student_key,
         cl.code_module,
         cl.code_presentation,
-        swa.activity_type,
-        swa.relative_week,
-        swa.sum_click,
-        -- pct_through_course anchored to the week's own relative_day,
-        -- so it's a genuine, exact conversion, not an approximation
-        ROUND(swa.relative_day * 1.0 / cl.module_presentation_length, 3) AS pct_through_course
+        sda.sum_click,
 
-    FROM student_weekly_activity swa
+        -- Percentage through the course, 0.0 to 1.0
+        sda.relative_day * 1.0 / cl.module_presentation_length AS pct_through_course
+
+    FROM student_daily_activity sda
     JOIN course_length cl
-        ON swa.course_key = cl.course_key
+        ON sda.course_key = cl.course_key
 
-    WHERE swa.relative_day BETWEEN 0 AND cl.module_presentation_length
+    WHERE sda.relative_day BETWEEN 0 AND cl.module_presentation_length
+),
+
+decile_binned AS (
+    SELECT
+        *,
+        -- Deciles: 0-10%, 10-20%, ... 90-100%. Every course contributes
+        -- to every decile, since percentage is length-independent.
+        LEAST(FLOOR(pct_through_course * 10), 9) AS decile
+    FROM activity_with_progress
 )
 
 SELECT
-    code_module,
-    code_presentation,
-    activity_type,
-    relative_week,
-    ROUND(AVG(pct_through_course), 3) AS avg_pct_through_course,  -- avg across days within this week
+    decile,
+    CONCAT(decile * 10, '-', (decile + 1) * 10, '%') AS course_progress_bucket,
+    COUNT(DISTINCT code_module || '-' || code_presentation) AS courses_with_data,  -- should be constant across every row now
     COUNT(DISTINCT student_key) AS active_students,
     SUM(sum_click) AS total_clicks,
     ROUND(SUM(sum_click) * 1.0 / COUNT(DISTINCT student_key), 1) AS avg_clicks_per_active_student
 
-FROM activity_in_course
+FROM decile_binned
 
-GROUP BY code_module, code_presentation, activity_type, relative_week
-ORDER BY code_module, code_presentation, activity_type, relative_week;
+GROUP BY decile
+ORDER BY decile;
