@@ -387,62 +387,104 @@ and:
 
 Fact tables contain event records and measures, while dimension tables provide descriptive information for analysis.
 
-## Analytics
 
-The Analytics layer contains reusable queries and views designed around business questions.
+# Business Analytics Queries
 
-**Business Question**
+## How does student engagement relate to performance?
 
-`How does student engagement relate to performance?`
+### Method
 
-For this analysis, student engagement is measured using assessment submission rate, while performance is measured using average assessment score.
+* **Engagement Measurement:**  
+  Assessment submission rate is calculated as:  `Assessment submission rate = Number of submitted assessments`
 
-**Engagement**
-Assessment submission rate is calculated as:
 
-Assessment submission rate =
-Number of submitted assessments
----------------------------------
-Total assessments for the student
+* **Submission Tracking:**  
+The assessment submission date is obtained through the relationship:  
+- `fact_assessment.date_key`  
+  ↓  
+- `dim_date.date_key`  
+  ↓  
+- `dim_date.relative_day`  
 
-The assessment submission date is obtained through the relationship between:
+- A relative day of **-1** = assessment not submitted  
+- Other relative-day values = recorded submission date  
 
-fact_assessment.date_key
-          ↓
-dim_date.date_key
-          ↓
-dim_date.relative_day
+* **Performance Measurement:**  
+- Average assessment score  
 
-A relative day of -1 represents an assessment that was not submitted, while other relative-day values represent a recorded submission date.
+* **Analytical Grain:**  
+- One row per student per course  
+- Student-course records grouped into submission-rate engagement buckets:  
+  - 0–20%  
+  - 20–40%  
+  - 40–60%  
+  - 60–80%  
+  - 80–100%  
 
-Performance
+* **Comparison Metrics:**  
+- Number of students  
+- Average assessment submission rate  
+- Average assessment score  
 
-Performance is measured using:
+### Findings
 
-Average assessment score
-Analytical Grain
+* Students with **higher assessment engagement** tend to show **higher average performance scores**.  
+* The analysis identifies a **relationship/association**, but does **not establish causation**.  
 
-The intermediate analytical dataset has:
+---
 
-One row per student per course
+## What patterns appear among students who withdraw?
 
-Student-course records are grouped into assessment submission-rate engagement buckets:
+### Method
+- **Chart Grouping:** Students categorized by age band; outcomes simplified into "Withdrawn" vs. "Retained."
+- **Computed Metrics:** For each group, calculated:
+  - Average Assessment Score
+  - Average Submission Count (assessments submitted ÷ unique students)
 
-0–20%
-20–40%
-40–60%
-60–80%
-80–100%
+### Findings
+- **Consistent Performance Gap:** Withdrawn students score ~10–11 points lower across all age groups.
+- **Severe Engagement Drop:** Withdrawn students average ~2.8 submissions vs. ~7.3 for retained students.
+- **Age Does Not Alter Trend:** Older students score higher overall, but withdrawal impact is consistent.
+- **Early Warning Sign:** Low submission volume is the strongest predictor of dropout risk.
 
-The analysis compares:
+---
 
-Number of students
-Average assessment submission rate
-Average assessment score
+## How does student activity change throughout a course?
 
-This allows the project to examine whether students with higher assessment engagement tend to have higher or lower assessment performance.
+### Method
+- **Activity:** VLE clicks (`sum_click`) from `fact_vle_interaction`.
+- **Course Progress:** Percentage completion (0–100%), binned into 10 deciles.
+- **Normalization:** Binning by % progress ensures all courses contribute equally.
+- **Visuals:**  
+  - Bar chart → Avg clicks per active student by decile  
+  - Line chart → Total active students by decile
 
-The analysis identifies a relationship or association and does not by itself establish causation.
+### Findings
+- **Active Students Decline:** ~28K (0–10%) → ~14K (90–100%), ~50% drop.
+- **Engagement Peaks:**  
+  - Start (0–10%, ~185 clicks) → orientation browsing  
+  - Mid-course (50–60%) & late-course (80–90%) → assessment deadlines  
+- **Sharp Collapse:** Final decile (90–100%, ~58 clicks) shows lowest engagement.
+
+---
+
+## Bonus: Which course modules have the highest overall student engagement?
+
+### Method
+- **Chart Grouping:** VLE interactions grouped by course (`code_module`).
+- **Computed Metrics:** Avg clicks per student = total clicks ÷ distinct students.
+- **Sorting:** Top 5 modules ranked by engagement.
+
+### Findings
+- **Top Performer:** Module **FFF** → >1,800 avg clicks per student.
+- **Drop-off:** Module **AAA** → ~1,300 clicks (500 fewer than FFF).
+- **Runner-ups:**  
+  - EEE → ~1,050 clicks  
+  - DDD → ~800 clicks  
+  - CCC → ~650 clicks  
+- **High Variance:** FFF generates nearly 3× the engagement of CCC.
+
+
 
 ## Data Quality Checks
 Data quality checks are applied throughout the pipeline.
