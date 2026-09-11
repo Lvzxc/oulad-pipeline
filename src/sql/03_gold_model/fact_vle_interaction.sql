@@ -20,11 +20,15 @@ USING (
         CURRENT_DATE AS gold_processed_date
     FROM oulad.oulad_silver.student_vle_silver sv
     JOIN oulad.oulad_gold.dim_student ds
-        ON sv.id_student = ds.id_student       
+        ON sv.id_student = ds.id_student
+        AND sv.code_module = ds.code_module              
+        AND sv.code_presentation = ds.code_presentation  
     JOIN oulad.oulad_gold.dim_vle dv
-        ON sv.id_site = dv.id_site              
+        ON sv.id_site = dv.id_site
+        AND sv.code_module = dv.code_module            
+        AND sv.code_presentation = dv.code_presentation  
     JOIN oulad.oulad_gold.dim_date dd
-        ON sv.date = dd.date_key                
+        ON sv.date = dd.date_key
 ) AS src
 ON tgt.student_key = src.student_key
    AND tgt.course_key = src.course_key

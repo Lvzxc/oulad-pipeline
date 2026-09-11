@@ -25,9 +25,10 @@ USING (
         ON sa.id_student = ds.id_student
     JOIN oulad.oulad_gold.dim_assessment da
         ON sa.id_assessment = da.id_assessment
-        AND da.course_key = ds.course_key   
     JOIN oulad.oulad_gold.dim_date dd
         ON sa.date_submitted = dd.date_key
+    -- ✅ enforce alignment AFTER joins
+    WHERE ds.course_key = da.course_key
 ) AS src
 ON tgt.student_key = src.student_key
    AND tgt.course_key = src.course_key
