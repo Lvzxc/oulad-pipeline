@@ -490,37 +490,41 @@ The assessment submission date is obtained through the relationship:
 Data quality checks are applied throughout the pipeline.
 
 ## Source Checks
--Expected source files exist
--Missing source files are detected
--Unexpected source files are reported
--Source files are not empty
--Source row counts are recorded
+- Expected source files exist
+- Missing source files are detected
+- Unexpected source files are reported
+- Source files are not empty
+- Source row counts are recorded
+
 **Bronze Checks**
--Source data is successfully ingested
--Source and Bronze row counts can be compared
--Expected columns are present
--Required fields are validated
--Ingestion metadata is present
+- Source data is successfully ingested
+- Source and Bronze row counts can be compared
+- Expected columns are present
+- Required fields are validated
+- Ingestion metadata is present
+
 **Silver Checks**
--Required fields are not null
--Data types are valid
--Sentinel values are handled
--Accepted categorical values are enforced
--Numeric values are within expected ranges
--Duplicate records are controlled
--Silver lineage metadata is present
+- Required fields are not null
+- Data types are valid
+- Sentinel values are handled
+- Accepted categorical values are enforced
+- Numeric values are within expected ranges
+- Duplicate records are controlled
+- Silver lineage metadata is present
+
 **Gold Checks**
--Dimension natural keys are unique where required
--Surrogate keys are valid
--Fact-table grain is maintained
--Foreign keys reference valid dimensions
--Required fact fields are populated
--Gold processing metadata is present
+- Dimension natural keys are unique where required
+- Surrogate keys are valid
+- Fact-table grain is maintained
+- Foreign keys reference valid dimensions
+- Required fact fields are populated
+- Gold processing metadata is present
+
 **Analytics Checks**
--Business query results follow the intended grain
--Aggregations use the appropriate fact measures
--Null or invalid values do not distort analytical results
--Business rules are validated before results are used for reporting
+- Business query results follow the intended grain
+- Aggregations use the appropriate fact measures
+- Null or invalid values do not distort analytical results
+- Business rules are validated before results are used for reporting 
 
 ## Repository Structure
 The repository is organized by pipeline responsibility.
@@ -548,8 +552,6 @@ oulad-pipeline/
 │   ├── gold/
 │   └── analytics/
 │
-├── .github/
-│   └── workflows/
 │
 └── README.md
 ```
@@ -730,11 +732,11 @@ This prevents one large test suite from having to handle every type of data-qual
 ## Project Outcome
 The completed pipeline transforms OULAD source data into a structured analytical warehouse that supports:
 
--Student analysis
--Course analysis
--Assessment performance analysis
--Assessment submission analysis
--VLE interaction analysis
--Student engagement analysis
--Dimensional reporting
--Data-quality validation
+- Student analysis
+- Course analysis
+- Assessment performance analysis
+- Assessment submission analysis
+- VLE interaction analysis
+- Student engagement analysis
+- Dimensional reporting
+- Data-quality validation
