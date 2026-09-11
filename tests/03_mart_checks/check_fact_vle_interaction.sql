@@ -13,15 +13,19 @@ expectations AS (
     FROM oulad.oulad_silver.student_vle_silver sv
     INNER JOIN oulad.oulad_gold.dim_student ds
         ON sv.id_student = ds.id_student
+        AND sv.code_module = ds.code_module
+        AND sv.code_presentation = ds.code_presentation
     INNER JOIN oulad.oulad_gold.dim_vle dv
         ON sv.id_site = dv.id_site
+        AND sv.code_module = dv.code_module
+        AND sv.code_presentation = dv.code_presentation
     INNER JOIN oulad.oulad_gold.dim_date dd
         ON sv.date = dd.date_key
 ),
 
 dq_results AS (
 
-    -- Volume
+    -- VOLUME
     SELECT
         'fact_vle_interaction' AS table_name,
         'Row count' AS check_name,
@@ -36,7 +40,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- Required keys
+    -- NULL: student_key
     SELECT
         'fact_vle_interaction',
         'Missing student_key',
@@ -49,6 +53,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: course_key
     SELECT
         'fact_vle_interaction',
         'Missing course_key',
@@ -61,6 +66,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: site_key
     SELECT
         'fact_vle_interaction',
         'Missing site_key',
@@ -73,6 +79,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: date_key
     SELECT
         'fact_vle_interaction',
         'Missing date_key',
@@ -85,7 +92,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- Fact grain uniqueness
+    -- UNIQUE: fact grain
     SELECT
         'fact_vle_interaction',
         'Duplicate VLE interaction',
@@ -121,11 +128,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Student foreign key
+    -- REFERENTIAL INTEGRITY: student
     SELECT
         'fact_vle_interaction',
         'Interaction without matching student',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(ds.student_key IS NULL),
         '0',
@@ -139,11 +146,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Course foreign key
+    -- REFERENTIAL INTEGRITY: course
     SELECT
         'fact_vle_interaction',
         'Interaction without matching course',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(dc.course_key IS NULL),
         '0',
@@ -157,11 +164,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- VLE site foreign key
+    -- REFERENTIAL INTEGRITY: VLE site
     SELECT
         'fact_vle_interaction',
         'Interaction without matching VLE site',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(dv.site_key IS NULL),
         '0',
@@ -175,11 +182,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Date foreign key
+    -- REFERENTIAL INTEGRITY: date
     SELECT
         'fact_vle_interaction',
         'Interaction without matching date',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(dd.date_key IS NULL),
         '0',
@@ -193,11 +200,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Student-course relationship
+    -- BUSINESS RULE: student must belong to the same course
     SELECT
         'fact_vle_interaction',
         'Student-course mismatch',
-        'RELATIONSHIP',
+        'BUSINESS RULE',
         COUNT(*),
         COUNT_IF(ds.course_key <> f.course_key),
         '0',
@@ -211,11 +218,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Course-site relationship
+    -- BUSINESS RULE: VLE site must belong to the same course
     SELECT
         'fact_vle_interaction',
         'Course-site mismatch',
-        'RELATIONSHIP',
+        'BUSINESS RULE',
         COUNT(*),
         COUNT_IF(dv.course_key <> f.course_key),
         '0',
@@ -229,7 +236,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- sum_click should not be negative.
+    -- RANGE: sum_click
     SELECT
         'fact_vle_interaction',
         'Invalid sum_click',
@@ -251,11 +258,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Gold lineage
+    -- BUSINESS RULE: Gold processing timestamp
     SELECT
         'fact_vle_interaction',
         'Missing Gold processing timestamp',
-        'LINEAGE',
+        'BUSINESS RULE',
         COUNT(*),
         COUNT_IF(gold_processed_timestamp IS NULL),
         '0',
@@ -293,49 +300,21 @@ SELECT
     failure_pct,
 
     CASE
+        WHEN check_type = 'VOLUME'
+            THEN NULL
+
         WHEN failures = 0
-        THEN 'PASS'
+            THEN 'PASS'
 
-        -- Required fact keys are critical.
-        WHEN check_type = 'NULL'
-        THEN 'FAIL'
-
-        -- Relationship integrity
-        WHEN check_type = 'RELATIONSHIP'
-             AND failure_pct <= 0.1
-        THEN 'WARN'
-
-        WHEN check_type = 'RELATIONSHIP'
-        THEN 'FAIL'
-
-        -- UNIQUE / RANGE
-        WHEN check_type IN ('UNIQUE', 'RANGE')
-             AND failure_pct <= 1
-        THEN 'WARN'
-
-        WHEN check_type IN ('UNIQUE', 'RANGE')
-        THEN 'FAIL'
-
-        -- FOREIGN KEY
-        WHEN check_type = 'FOREIGN KEY'
-             AND failure_pct <= 0.1
-        THEN 'WARN'
-
-        WHEN check_type = 'FOREIGN KEY'
-        THEN 'FAIL'
-
-        -- VOLUME
-        WHEN check_type = 'VOLUME'
-             AND failure_pct <= 2
-        THEN 'WARN'
-
-        WHEN check_type = 'VOLUME'
-        THEN 'FAIL'
-
-        -- LINEAGE
-        WHEN check_type = 'LINEAGE'
-             AND failure_pct <= 1
-        THEN 'WARN'
+        WHEN check_type IN (
+            'NULL',
+            'UNIQUE',
+            'RANGE',
+            'ACCEPTED VALUE',
+            'REFERENTIAL INTEGRITY',
+            'BUSINESS RULE'
+        )
+            THEN 'FAIL'
 
         ELSE 'FAIL'
     END AS status

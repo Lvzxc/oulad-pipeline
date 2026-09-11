@@ -11,17 +11,19 @@ expectations AS (
     SELECT
         COUNT(*) AS expected_row_count
     FROM oulad.oulad_silver.student_assessment_silver sa
-    INNER JOIN oulad.oulad_gold.dim_student ds
-        ON sa.id_student = ds.id_student
     INNER JOIN oulad.oulad_gold.dim_assessment da
         ON sa.id_assessment = da.id_assessment
+    INNER JOIN oulad.oulad_gold.dim_student ds
+        ON sa.id_student = ds.id_student
+        AND da.code_module = ds.code_module
+        AND da.code_presentation = ds.code_presentation
     INNER JOIN oulad.oulad_gold.dim_date dd
-        ON sa.date_submitted = dd.date_key
+        ON sa.date_submitted = dd.relative_day
 ),
 
 dq_results AS (
 
-    -- Volume
+    -- VOLUME
     SELECT
         'fact_assessment' AS table_name,
         'Row count' AS check_name,
@@ -36,7 +38,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- Required keys
+    -- NULL: student_key
     SELECT
         'fact_assessment',
         'Missing student_key',
@@ -49,6 +51,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: course_key
     SELECT
         'fact_assessment',
         'Missing course_key',
@@ -61,6 +64,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: assessment_key
     SELECT
         'fact_assessment',
         'Missing assessment_key',
@@ -73,6 +77,7 @@ dq_results AS (
 
     UNION ALL
 
+    -- NULL: date_key
     SELECT
         'fact_assessment',
         'Missing date_key',
@@ -85,7 +90,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- Fact grain uniqueness
+    -- UNIQUE: fact grain
     SELECT
         'fact_assessment',
         'Duplicate assessment fact',
@@ -121,84 +126,71 @@ dq_results AS (
 
     UNION ALL
 
-    -- Student foreign key
+    -- REFERENTIAL INTEGRITY: student
     SELECT
         'fact_assessment',
         'Assessment without matching student',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(ds.student_key IS NULL),
         '0',
-        CAST(
-            COUNT_IF(ds.student_key IS NULL)
-            AS STRING
-        )
+        CAST(COUNT_IF(ds.student_key IS NULL) AS STRING)
     FROM base f
     LEFT JOIN oulad.oulad_gold.dim_student ds
         ON f.student_key = ds.student_key
 
     UNION ALL
 
-    -- Course foreign key
+    -- REFERENTIAL INTEGRITY: course
     SELECT
         'fact_assessment',
         'Assessment without matching course',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(dc.course_key IS NULL),
         '0',
-        CAST(
-            COUNT_IF(dc.course_key IS NULL)
-            AS STRING
-        )
+        CAST(COUNT_IF(dc.course_key IS NULL) AS STRING)
     FROM base f
     LEFT JOIN oulad.oulad_gold.dim_course dc
         ON f.course_key = dc.course_key
 
     UNION ALL
 
-    -- Assessment foreign key
+    -- REFERENTIAL INTEGRITY: assessment
     SELECT
         'fact_assessment',
         'Assessment without matching assessment',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(da.assessment_key IS NULL),
         '0',
-        CAST(
-            COUNT_IF(da.assessment_key IS NULL)
-            AS STRING
-        )
+        CAST(COUNT_IF(da.assessment_key IS NULL) AS STRING)
     FROM base f
     LEFT JOIN oulad.oulad_gold.dim_assessment da
         ON f.assessment_key = da.assessment_key
 
     UNION ALL
 
-    -- Date foreign key
+    -- REFERENTIAL INTEGRITY: date
     SELECT
         'fact_assessment',
         'Assessment without matching date',
-        'FOREIGN KEY',
+        'REFERENTIAL INTEGRITY',
         COUNT(*),
         COUNT_IF(dd.date_key IS NULL),
         '0',
-        CAST(
-            COUNT_IF(dd.date_key IS NULL)
-            AS STRING
-        )
+        CAST(COUNT_IF(dd.date_key IS NULL) AS STRING)
     FROM base f
     LEFT JOIN oulad.oulad_gold.dim_date dd
         ON f.date_key = dd.date_key
 
     UNION ALL
 
-    -- Verify that the student belongs to the same course
-    -- as the assessment.
+    -- BUSINESS RULE: student must belong to the assessment course
     SELECT
         'fact_assessment',
         'Student-course mismatch',
-        'RELATIONSHIP',
+        'BUSINESS RULE',
         COUNT(*),
         COUNT_IF(ds.course_key <> da.course_key),
         '0',
@@ -214,7 +206,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- Score range
+    -- RANGE: score
     SELECT
         'fact_assessment',
         'Invalid score range',
@@ -236,7 +228,7 @@ dq_results AS (
 
     UNION ALL
 
-    -- is_banked accepted values
+    -- ACCEPTED VALUE: is_banked
     SELECT
         'fact_assessment',
         'Invalid is_banked value',
@@ -258,11 +250,11 @@ dq_results AS (
 
     UNION ALL
 
-    -- Gold lineage
+    -- BUSINESS RULE: Gold processing timestamp
     SELECT
         'fact_assessment',
         'Missing Gold processing timestamp',
-        'LINEAGE',
+        'BUSINESS RULE',
         COUNT(*),
         COUNT_IF(gold_processed_timestamp IS NULL),
         '0',
@@ -300,57 +292,21 @@ SELECT
     failure_pct,
 
     CASE
+        WHEN check_type = 'VOLUME'
+            THEN NULL
+
         WHEN failures = 0
-        THEN 'PASS'
-
-        -- Required fact keys are critical.
-        WHEN check_type = 'NULL'
-        THEN 'FAIL'
-
-        -- Relationship integrity
-        WHEN check_type = 'RELATIONSHIP'
-             AND failure_pct <= 0.1
-        THEN 'WARN'
-
-        WHEN check_type = 'RELATIONSHIP'
-        THEN 'FAIL'
-
-        -- UNIQUE / RANGE / ACCEPTED VALUE
-        WHEN check_type IN (
-            'UNIQUE',
-            'RANGE',
-            'ACCEPTED VALUE'
-        )
-        AND failure_pct <= 1
-        THEN 'WARN'
+            THEN 'PASS'
 
         WHEN check_type IN (
+            'NULL',
             'UNIQUE',
             'RANGE',
-            'ACCEPTED VALUE'
+            'ACCEPTED VALUE',
+            'REFERENTIAL INTEGRITY',
+            'BUSINESS RULE'
         )
-        THEN 'FAIL'
-
-        -- FOREIGN KEY
-        WHEN check_type = 'FOREIGN KEY'
-             AND failure_pct <= 0.1
-        THEN 'WARN'
-
-        WHEN check_type = 'FOREIGN KEY'
-        THEN 'FAIL'
-
-        -- VOLUME
-        WHEN check_type = 'VOLUME'
-             AND failure_pct <= 2
-        THEN 'WARN'
-
-        WHEN check_type = 'VOLUME'
-        THEN 'FAIL'
-
-        -- LINEAGE
-        WHEN check_type = 'LINEAGE'
-             AND failure_pct <= 1
-        THEN 'WARN'
+            THEN 'FAIL'
 
         ELSE 'FAIL'
     END AS status
