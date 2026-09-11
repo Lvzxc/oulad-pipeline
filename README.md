@@ -100,22 +100,28 @@ The purpose of this step is to establish what was received from the source befor
 
 The source inspection performs the following checks:
 
-**File Availability**
+**File Availability** 
+
 Checks that the expected OULAD CSV files exist in the configured source location.
 
-**Missing Files**
+**Missing Files** 
+
 The inspection fails when an expected source file is missing.
 
 **Unexpected Files**
+
 Additional CSV files that are not part of the expected OULAD source set are reported.
 
 **Source Row Counts**
+
 Each source CSV file is read directly and its number of records is recorded.
 
 **Empty Files**
+
 Source files containing zero records are treated as a source-quality failure.
 
 **Source Audit**
+
 Source row counts are stored in a Delta audit table.
 
 This provides a source baseline that can be used by downstream data-quality checks instead of relying on hardcoded row counts.
@@ -139,9 +145,10 @@ vle_bronze
 Bronze is intentionally kept close to the original source structure.
 
 Typical ingestion metadata includes:
-
+```text
 ingestion_timestamp
 ingestion_date
+```
 
 Cleaning and business transformations are handled in the Silver layer.
 
