@@ -75,7 +75,7 @@ OULAD Source CSV Files
 Each layer has one responsibility. Preview queries and validation logic are kept separate from the production transformation files.
 ## Pipeline Layers
 
-##Source Data
+## Source Data
 
 The project uses the Open University Learning Analytics Dataset (OULAD).
 
@@ -93,7 +93,7 @@ vle.csv
 ```
 The source data is not committed to GitHub.
 
-**Source Inspection**
+## Source Inspection
 
 Source inspection is performed before Bronze ingestion.
 The purpose of this step is to establish what was received from the source before the data is transformed or loaded into Bronze.
@@ -120,7 +120,7 @@ Source row counts are stored in a Delta audit table.
 
 This provides a source baseline that can be used by downstream data-quality checks instead of relying on hardcoded row counts.
 
-Bronze Layer
+## Bronze Layer
 
 The Bronze layer contains the raw OULAD data ingested into Delta tables.
 
@@ -145,7 +145,7 @@ ingestion_date
 
 Cleaning and business transformations are handled in the Silver layer.
 
-# Silver Layer
+## Silver Layer
 
 The Silver layer cleans, standardizes, validates, and prepares the raw Bronze OULAD data for the Gold dimensional model.
 
