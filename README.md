@@ -32,7 +32,7 @@ Source Files → Bronze → Tests → Silver → Tests → Gold → Tests → An
 
 | Layer | Purpose |
 |---|---|
-| **Source** | Original Instacart CSV files stored in a Databricks Volume. Source data is not committed to GitHub. |
+| **Source** | Original OULAD CSV files stored in a Databricks Volume. Source data is not committed to GitHub. |
 | **Bronze** | Ingests source records into raw Delta tables with ingestion metadata. |
 | **Silver** | Cleans, casts, standardizes, validates, deduplicates, and combines related datasets. |
 | **Gold** | Builds the fact table and dimension tables used for analysis. |
