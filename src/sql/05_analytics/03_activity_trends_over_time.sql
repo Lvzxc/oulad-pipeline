@@ -1,9 +1,10 @@
 -- BUSINESS QUESTION:
--- How does student activity change throughout a course?
+-- How does student activity change throughout a course, broken down
+-- by VLE activity type (resource, oucontent, forumng, quiz, etc.)?
 -- Activity = VLE clicks (sum_click)
 -- Course progress = percentage through the course, based on relative_day
--- Grain = one row per student per course per week, keeping full week-level
--- detail per course-presentation
+-- Grain = one row per student per course per week per activity type,
+-- keeping full week-level detail per course-presentation
 
 WITH course_length AS (
     SELECT
@@ -18,10 +19,13 @@ student_weekly_activity AS (
     SELECT
         f.student_key,
         f.course_key,
+        dv.activity_type,          -- What kind of VLE resource was interacted with
         dd.relative_day,
         dd.relative_week,
         f.sum_click
     FROM oulad.oulad_gold.fact_vle_interaction f
+    JOIN oulad.oulad_gold.dim_vle dv
+        ON f.site_key = dv.site_key
     JOIN oulad.oulad_gold.dim_date dd
         ON f.date_key = dd.date_key
 ),
@@ -31,6 +35,7 @@ activity_in_course AS (
         swa.student_key,
         cl.code_module,
         cl.code_presentation,
+        swa.activity_type,
         swa.relative_week,
         swa.sum_click,
         -- pct_through_course anchored to the week's own relative_day,
@@ -47,6 +52,7 @@ activity_in_course AS (
 SELECT
     code_module,
     code_presentation,
+    activity_type,
     relative_week,
     ROUND(AVG(pct_through_course), 3) AS avg_pct_through_course,  -- avg across days within this week
     COUNT(DISTINCT student_key) AS active_students,
@@ -55,5 +61,5 @@ SELECT
 
 FROM activity_in_course
 
-GROUP BY code_module, code_presentation, relative_week
-ORDER BY code_module, code_presentation, relative_week;
+GROUP BY code_module, code_presentation, activity_type, relative_week
+ORDER BY code_module, code_presentation, activity_type, relative_week;
