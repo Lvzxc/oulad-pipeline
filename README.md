@@ -32,7 +32,7 @@ Source Files → Bronze → Tests → Silver → Tests → Gold → Tests → An
 
 | Layer | Purpose |
 |---|---|
-| **Source** | Original Instacart CSV files stored in a Databricks Volume. Source data is not committed to GitHub. |
+| **Source** | Original OULAD CSV files stored in a Databricks Volume. Source data is not committed to GitHub. |
 | **Bronze** | Ingests source records into raw Delta tables with ingestion metadata. |
 | **Silver** | Cleans, casts, standardizes, validates, deduplicates, and combines related datasets. |
 | **Gold** | Builds the fact table and dimension tables used for analysis. |
@@ -63,8 +63,7 @@ Each layer has one responsibility. Preview queries and validation logic are kept
 ## Gold data model
 
 The Gold layer uses a star schema centered on
-<img width="811" height="571" alt="image" src="https://github.com/user-attachments/assets/923a548e-2204-48dd-bc1e-31f64545dc76" />
-
+<img width="1345" height="1041" alt="Oulad Star Schema" src="https://github.com/user-attachments/assets/2500ff7b-064e-46d2-b6e6-5dc4d4d25107" />
 
 ### Fact table
 1. `fact_assessment`

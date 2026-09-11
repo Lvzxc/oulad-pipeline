@@ -1,20 +1,18 @@
 -- Create the Gold dimension table for assessments
 CREATE TABLE IF NOT EXISTS oulad.oulad_gold.dim_assessment (
-    -- Surrogate primary key
     assessment_key BIGINT GENERATED ALWAYS AS IDENTITY,
-
-    -- Natural/business key columns
     id_assessment BIGINT,
-    course_key BIGINT NOT NULL,         
-
-    -- Assessment attributes
+    course_key BIGINT NOT NULL,
+    code_module STRING,                 
+    code_presentation STRING,        
     assessment_type STRING,
     assessment_date INT,
     weight INT,
-
-    -- Lineage
     silver_processed_timestamp TIMESTAMP,
-    silver_processed_date DATE
+    silver_processed_date DATE,
+    gold_processed_timestamp TIMESTAMP,  
+    gold_processed_date DATE,            
+    PRIMARY KEY (assessment_key)
 );
 
 -- Prepare cleaned Silver records for Gold
@@ -22,8 +20,8 @@ CREATE OR REPLACE TEMP VIEW dim_assessment_ready AS
 SELECT
     a.id_assessment,
     dc.course_key,                        
-    a.code_module,
-    a.code_presentation,
+    a.code_module,                        
+    a.code_presentation,                 
     a.assessment_type,
     CAST(a.date AS INT) AS assessment_date,
     CAST(a.weight AS INT) AS weight,
@@ -38,11 +36,14 @@ JOIN oulad.oulad_gold.dim_course dc
 MERGE INTO oulad.oulad_gold.dim_assessment AS target
 USING dim_assessment_ready AS source
 ON target.id_assessment = source.id_assessment
-AND target.code_module = source.code_module
-AND target.code_presentation = source.code_presentation
+AND target.course_key = source.course_key
+AND target.code_module = source.code_module             
+AND target.code_presentation = source.code_presentation  
 WHEN MATCHED THEN
     UPDATE SET
         target.course_key = source.course_key,       
+        target.code_module = source.code_module,            -- ✅ update
+        target.code_presentation = source.code_presentation,-- ✅ update
         target.assessment_type = source.assessment_type,
         target.assessment_date = source.assessment_date,
         target.weight = source.weight,
@@ -53,8 +54,8 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (
         id_assessment,
-        course_key,                                
-        code_module,
+        course_key,
+        code_module,                                
         code_presentation,
         assessment_type,
         assessment_date,

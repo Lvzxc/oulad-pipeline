@@ -21,12 +21,14 @@ USING (
         CURRENT_TIMESTAMP AS gold_processed_timestamp,
         CURRENT_DATE AS gold_processed_date
     FROM oulad.oulad_silver.student_assessment_silver sa
-    JOIN oulad.oulad_gold.dim_student ds
-        ON sa.id_student = ds.id_student
     JOIN oulad.oulad_gold.dim_assessment da
         ON sa.id_assessment = da.id_assessment
+    JOIN oulad.oulad_gold.dim_student ds
+        ON sa.id_student = ds.id_student
+        AND da.code_module = ds.code_module
+        AND da.code_presentation = ds.code_presentation
     JOIN oulad.oulad_gold.dim_date dd
-        ON sa.date_submitted = dd.date_key      
+        ON sa.date_submitted = dd.relative_day
 ) AS src
 ON tgt.student_key = src.student_key
    AND tgt.course_key = src.course_key
@@ -39,5 +41,23 @@ WHEN MATCHED THEN
         tgt.gold_processed_timestamp = src.gold_processed_timestamp,
         tgt.gold_processed_date = src.gold_processed_date
 WHEN NOT MATCHED THEN
-    INSERT (student_key, course_key, assessment_key, date_key, score, is_banked, gold_processed_timestamp, gold_processed_date)
-    VALUES (src.student_key, src.course_key, src.assessment_key, src.date_key, src.score, src.is_banked, src.gold_processed_timestamp, src.gold_processed_date);
+    INSERT (
+        student_key,
+        course_key,
+        assessment_key,
+        date_key,
+        score,
+        is_banked,
+        gold_processed_timestamp,
+        gold_processed_date
+    )
+    VALUES (
+        src.student_key,
+        src.course_key,
+        src.assessment_key,
+        src.date_key,
+        src.score,
+        src.is_banked,
+        src.gold_processed_timestamp,
+        src.gold_processed_date
+    );
