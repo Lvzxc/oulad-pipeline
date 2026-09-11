@@ -21,14 +21,14 @@ USING (
         CURRENT_TIMESTAMP AS gold_processed_timestamp,
         CURRENT_DATE AS gold_processed_date
     FROM oulad.oulad_silver.student_assessment_silver sa
-    JOIN oulad.oulad_gold.dim_student ds
-        ON sa.id_student = ds.id_student
     JOIN oulad.oulad_gold.dim_assessment da
         ON sa.id_assessment = da.id_assessment
+    JOIN oulad.oulad_gold.dim_student ds
+        ON sa.id_student = ds.id_student
+        AND da.code_module = ds.code_module
+        AND da.code_presentation = ds.code_presentation
     JOIN oulad.oulad_gold.dim_date dd
         ON sa.date_submitted = dd.date_key
-    -- ✅ enforce alignment AFTER joins
-    WHERE ds.course_key = da.course_key
 ) AS src
 ON tgt.student_key = src.student_key
    AND tgt.course_key = src.course_key
