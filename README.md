@@ -392,45 +392,22 @@ Fact tables contain event records and measures, while dimension tables provide d
 
 ## How does student engagement relate to performance?
 
-### Method
+## Method
+- Chart Grouping: Students are categorized based on their assessment submission rate into five engagement groups: 0–20%, 20–40%, 40–60%, 60–80%, and 80–100%. 
+- Engagement Metric: Engagement is measured as the percentage of available assessments submitted by each student. 
+- Performance Metric: Performance is measured using the average assessment score among submitted assessments. 
+- Computed Metrics: For each engagement group, the query calculates the number of students, average submission rate, and average assessment score. 
+- The analysis is first calculated at the student-per-course level, then aggregated into engagement buckets.
 
-* **Engagement Measurement:**  
-  Assessment submission rate is calculated as:  `Assessment submission rate = Number of submitted assessments`
+## Findings
+
+- No Clear Performance Trend: Average assessment scores do not consistently increase as submission rates increase, ranging from 70.5 to 72.8 across engagement groups. 
+- Similar Performance Across Groups:  Very low-engagement students score 72.2, compared with 72.8 for the 80–100% group. 
+- Fluctuating Scores: The 60–80% group has the lowest average score at 70.5, while the 80–100% group has the highest at 72.8, showing that the relationship is not strictly linear. 
+- Strong Participation: 25,330 students fall into the 80–100% group, indicating generally high assessment participation. 
 
 
-* **Submission Tracking:**  
-The assessment submission date is obtained through the relationship:  
-- `fact_assessment.date_key`  
-  ↓  
-- `dim_date.date_key`  
-  ↓  
-- `dim_date.relative_day`  
-
-- A relative day of **-1** = assessment not submitted  
-- Other relative-day values = recorded submission date  
-
-* **Performance Measurement:**  
-- Average assessment score  
-
-* **Analytical Grain:**  
-- One row per student per course  
-- Student-course records grouped into submission-rate engagement buckets:  
-  - 0–20%  
-  - 20–40%  
-  - 40–60%  
-  - 60–80%  
-  - 80–100%  
-
-* **Comparison Metrics:**  
-- Number of students  
-- Average assessment submission rate  
-- Average assessment score  
-
-### Findings
-
-* Students with **higher assessment engagement** tend to show **higher average performance scores**.  
-* The analysis identifies a **relationship/association**, but does **not establish causation**.  
-
+In this analysis, assessment submission rate alone does not appear to be a strong indicator of average assessment performance. Further analysis with other student or course characteristics may help explain differences in performance.
 ---
 
 ## What patterns appear among students who withdraw?
