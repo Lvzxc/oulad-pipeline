@@ -68,12 +68,13 @@ OULAD Source CSV Files
 | **Silver Tests**      | Validates cleaned data, accepted values, ranges, required fields, and other Silver-layer rules.                                                         |
 | **Gold**              | Builds the dimensional data warehouse using fact and dimension tables.                                                                                  |
 | **Gold Tests**        | Validates Gold-layer relationships, uniqueness, referential integrity, and fact-table grain.                                                            |
-| **Analytics**         | Contains business-oriented queries and views used to answer analytical questions.                                                                       |
-| **Analytics Tests**   | Validates analytical outputs and business rules.                                                                                                        |
+| **Analytics**         | Contains business-oriented queries and views used to answer analytical questions.                        
+                                                                                               
 
 
 Each layer has one responsibility. Preview queries and validation logic are kept separate from the production transformation files.
-## Pipeline Layers
+
+## PIPELINE LAYERS
 
 ## Source Data
 
@@ -102,27 +103,27 @@ The source inspection performs the following checks:
 
 **File Availability** 
 
-Checks that the expected OULAD CSV files exist in the configured source location.
+- Checks that the expected OULAD CSV files exist in the configured source location.
 
 **Missing Files** 
 
-The inspection fails when an expected source file is missing.
+- The inspection fails when an expected source file is missing.
 
 **Unexpected Files**
 
-Additional CSV files that are not part of the expected OULAD source set are reported.
+- Additional CSV files that are not part of the expected OULAD source set are reported.
 
 **Source Row Counts**
 
-Each source CSV file is read directly and its number of records is recorded.
+- Each source CSV file is read directly and its number of records is recorded.
 
 **Empty Files**
 
-Source files containing zero records are treated as a source-quality failure.
+- Source files containing zero records are treated as a source-quality failure.
 
 **Source Audit**
 
-Source row counts are stored in a Delta audit table.
+- Source row counts are stored in a Delta audit table.
 
 This provides a source baseline that can be used by downstream data-quality checks instead of relying on hardcoded row counts.
 
@@ -312,7 +313,7 @@ gold_processed_date
 ```
 The sum_click measure can be used to analyze student interaction with course materials and activities.
 
-**## Dimension Tables
+## Dimension Tables
 | Dimension | Grain | Main Key | Purpose |
 |---|---|---|---|
 | `dim_student` | One row per student | `student_key` | Student-related attributes and course presentation information |
@@ -348,10 +349,10 @@ The `relative_week` is derived from the relative day.
 
 The dimension is generated using the range of relative dates found across date-based Silver datasets, including:
 
--Assessment submission dates
--Student registration dates
--Student unregistration dates
--VLE interaction dates
+- Assessment submission dates
+- Student registration dates
+- Student unregistration dates
+- VLE interaction dates
 
 This allows the Gold fact tables to share a common relative-date dimension.
 
@@ -443,10 +444,10 @@ This allows the project to examine whether students with higher assessment engag
 
 The analysis identifies a relationship or association and does not by itself establish causation.
 
-**Data Quality Checks**
+## Data Quality Checks
 Data quality checks are applied throughout the pipeline.
 
-**Source Checks**
+## Source Checks
 -Expected source files exist
 -Missing source files are detected
 -Unexpected source files are reported
@@ -479,7 +480,7 @@ Data quality checks are applied throughout the pipeline.
 -Null or invalid values do not distort analytical results
 -Business rules are validated before results are used for reporting
 
-**Repository Structure**
+## Repository Structure
 The repository is organized by pipeline responsibility.
 ```text
 oulad-pipeline/
@@ -513,7 +514,7 @@ oulad-pipeline/
 
 This makes individual parts of the pipeline easier to develop, test, and troubleshoot.
 
-**Running the Pipeline**
+## Running the Pipeline
 
 Run the pipeline in dependency order.
 
@@ -586,7 +587,7 @@ This allows pipeline layers to be rerun without blindly appending duplicate reco
 The Gold tables use natural-key combinations and surrogate keys to maintain the intended grain of the dimensional model.
 Processing metadata is refreshed during Gold processing.
 
-**Data Lineage**
+## Data Lineage
 The pipeline maintains processing metadata across transformation layers.
 
 **Silver tables contain:**
@@ -622,7 +623,7 @@ Gold
 Analytics
 ```
 
-**Design Choices
+## Design Choices
 **Medallion Architecture**
 
 The pipeline separates responsibilities into Source, Bronze, Silver, Gold, Analytics, and Tests.
@@ -667,7 +668,7 @@ A single relative-date dimension is shared by the Gold fact tables.
 
 This provides consistent handling of OULAD relative-day values across assessment and VLE activity data.
 
-**Incremental MERGE Operations**
+## Incremental MERGE Operations
 
 Delta MERGE operations are used to update existing records and insert new records while supporting pipeline reruns.
 
@@ -684,7 +685,7 @@ Analytics → Business-result checks
 ```
 This prevents one large test suite from having to handle every type of data-quality problem.
 
-**Project Outcome**
+## Project Outcome
 The completed pipeline transforms OULAD source data into a structured analytical warehouse that supports:
 
 -Student analysis
