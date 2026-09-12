@@ -216,13 +216,13 @@ cd oulad-pipeline
 
 Place the following files in the configured Databricks Volume:
 
-assessments.csv
-courses.csv
-studentAssessment.csv
-studentInfo.csv
-studentRegistration.csv
-studentVle.csv
-vle.csv
+`assessments.csv`
+`courses.csv`
+`studentAssessment.csv`
+`studentInfo.csv`
+`studentRegistration.csv`
+`studentVle.csv`
+`vle.csv`
 
 **Execute the pipeline in the following order:**
 
