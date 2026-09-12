@@ -59,40 +59,6 @@ The project focuses on:
 
 ---
 
-# Project Architecture
-
-The pipeline uses a **Medallion Architecture** with validation applied across the different layers.
-
-```text
-                    OULAD SOURCE FILES
-                           │
-                           ▼
-                   SOURCE INSPECTION
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │   BRONZE    │
-                    │ Raw Data    │
-                    └──────┬──────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │   SILVER    │
-                    │ Clean Data  │
-                    └──────┬──────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │    GOLD     │
-                    │ Star Schema │
-                    └──────┬──────┘
-                           │
-                           ▼
-                     ANALYTICS
-```
-
----
-
 # Pipeline Layers
 
 | Layer | Purpose | Key Activities |
@@ -167,22 +133,6 @@ Examples:
 The pipeline uses a shared `dim_date` based on these relative days.
 
 This allows student assessment and VLE activity to be compared based on **course progress**, even when different course presentations have different schedules.
-
----
-
-# Data Validation
-
-Data quality checks are applied throughout the pipeline to identify issues early and protect the reliability of the analytical layer.
-
-| Layer         | Validation Focus                                                  |
-| ------------- | ----------------------------------------------------------------- |
-| **Source**    | Files, missing/empty files, and source row counts                 |
-| **Bronze**    | Ingestion completeness, columns, row counts, and metadata         |
-| **Silver**    | Required fields, data types, valid values, ranges, and duplicates |
-| **Gold**      | Keys, relationships, referential integrity, and fact grain        |
-| **Analytics** | Measures, analytical grain, and business-rule consistency         |
-
-This layered approach helps ensure that problems are identified before they affect downstream analytics.
 
 ---
 
