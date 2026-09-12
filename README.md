@@ -252,12 +252,14 @@ tests/
 
 Additional project documentation is available in the `docs/` directory.
 
-| Document          | Description                               |
-| ----------------- | ----------------------------------------- |
-| `architecture.md` | Pipeline architecture and data flow       |
-| `data-model.md`   | Gold-layer star schema and table design   |
-| `decisions.md`    | Key technical and data-modeling decisions |
-| `validation.md`   | Data-quality and validation framework     |
+| Document | Description |
+|---|---|
+| [`architecture.md`](docs/architecture.md) | Pipeline architecture and data flow |
+| [`data-model.md`](docs/data-model.md) | Gold-layer star schema and table design |
+| [`decisions.md`](docs/decisions.md) | Key technical and data-modeling decisions |
+| [`bronze_data_quality_results.md`](docs/data_quality/bronze_data_quality_results.md) | Bronze-layer data-quality validation results |
+| [`silver_data_quality_results.md`](docs/data_quality/silver_data_quality_results.md) | Silver-layer data-quality validation results |
+| [`gold_data_quality_results.md`](docs/data_quality/gold_data_quality_results.md) | Gold-layer data-quality validation results |
 
 ---
 
