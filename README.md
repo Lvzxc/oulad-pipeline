@@ -198,6 +198,29 @@ tests/
 
 ---
 
+## Decisions
+
+The architecture of the pipeline relies on key design decisions to guarantee reliable and scalable data processing. Below is a brief overview; for in-depth documentation, proceed to [`docs/decisions.md`](docs/decisions.md).
+
+* The pipeline is separated into Source, Bronze, Silver, Gold, and Analytics layers to isolate ingestion, transformation, modeling, and analysis.
+* Delta tables provide reliable storage, allowing for safe reruns and incremental updates without duplicating data.
+* The Bronze layer preserves the raw source structure, while the Silver layer handles all data cleaning, type standardization, and deduplication.
+* Surrogate keys map facts to dimensions in the Gold layer, enforcing a strict fact grain to prevent incorrect aggregations.
+* The time dimension tracks activity based on course-relative days instead of standard calendar dates to align with the OULAD dataset.
+
+---
+
+## Data Validation
+
+Validation checks are applied at every layer of the pipeline to identify issues early and ensure the final analytics are based on reliable data. Below is a brief overview; for in-depth documentation, proceed to [`docs/validation.md`](docs/validation.md).
+
+* Source and Bronze layer checks verify that all expected files are present, not empty, and successfully ingested with the correct columns and row counts.
+* Silver layer checks enforce data quality by verifying required fields, standardizing data types, validating numeric ranges, and removing duplicates.
+* Gold layer checks validate the dimensional model by confirming dimension keys, foreign key relationships, and fact table grain.
+* Analytics layer checks ensure the final output aligns with business rules, maintains the correct analytical grain, and properly handles null values.
+  
+---
+
 # Documentation
 
 Additional project documentation is available in the `docs/` directory.
